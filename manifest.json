@@ -1,0 +1,57 @@
+{
+  "project": "Athena Genesis",
+  "network": {
+    "name": "Base",
+    "chainId": 8453,
+    "explorer": "https://basescan.org"
+  },
+  "token": {
+    "name": "Athena",
+    "symbol": "ATA",
+    "decimals": 18,
+    "address": "0xYourAtaTokenAddress",
+    "totalSupply": "21000000",
+    "treasuryReserve": "19000000",
+    "treasuryCap": "1000000"
+  },
+  "reward": {
+    "epochDays": 7,
+    "split": { "agents": 0.60, "burn": 0.20, "treasury": 0.20 },
+    "claimWindowHours": 48,
+    "maxPctPerWallet": 0.10,
+    "newcomer": { "walletAgeDays": 45, "maxSubmissions": 100 },
+    "consistency": { "threshold": 0.60, "minConsecutive": 3 }
+  },
+  "admin": {
+    "treasury": "0xYourTreasuryAddress",
+    "rewardContract": "0xYourRewardClaimAddress",
+    "deployer": "0xYourDeployerAddress"
+  },
+  "agentSchema": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "title": "Athena Agent Signal",
+    "type": "object",
+    "required": ["agentId", "wallet", "prediction", "timestamp"],
+    "properties": {
+      "agentId": { "type": "string" },
+      "wallet": { "type": "string", "pattern": "^0x[a-fA-F0-9]{40}$" },
+      "prediction": {
+        "type": "object",
+        "required": ["target", "horizonHours", "direction", "confidence"],
+        "properties": {
+          "target": { "type": "string", "description": "e.g., BTC-USD" },
+          "horizonHours": { "type": "integer", "minimum": 1 },
+          "direction": { "type": "string", "enum": ["UP", "DOWN", "FLAT"] },
+          "confidence": { "type": "number", "minimum": 0, "maximum": 1 },
+          "priceTarget": { "type": "number" }
+        }
+      },
+      "timestamp": { "type": "string", "format": "date-time" },
+      "meta": { "type": "object" }
+    }
+  },
+  "manifesto": {
+    "ipfs": "ipfs://<PUT_CID_HERE>",
+    "sha256": "<optional-pdf-sha256>"
+  }
+}

@@ -1,0 +1,104 @@
+{
+  "version": 2,
+  "configVersion": "2.0",
+  "targets": [
+    {
+      "symbol": "BTC-USD",
+      "description": "Bitcoin vs USD spot price",
+      "precision": 2,
+      "sources": [
+        {
+          "name": "Coinbase",
+          "url": "https://api.exchange.coinbase.com/products/BTC-USD/ticker",
+          "parser": "price",
+          "weight": 0.98,
+          "enabled": true
+        },
+        {
+          "name": "Kraken",
+          "url": "https://api.kraken.com/0/public/Ticker?pair=XBTUSD",
+          "parser": "result.XBTUSD.c[0]",
+          "weight": 0.97,
+          "enabled": true
+        },
+        {
+          "name": "Bitstamp",
+          "url": "https://www.bitstamp.net/api/v2/ticker/btcusd",
+          "parser": "last",
+          "weight": 0.95,
+          "enabled": true
+        },
+        {
+          "name": "Binance",
+          "url": "https://api.binance.com/api/v3/ticker/price?symbol=BTCUSDT",
+          "parser": "price",
+          "weight": 0.95,
+          "enabled": true
+        },
+        {
+          "name": "OKX",
+          "url": "https://www.okx.com/api/v5/market/ticker?instId=BTC-USDT",
+          "parser": "data[0].last",
+          "weight": 0.94,
+          "enabled": true
+        },
+        {
+          "name": "Bybit",
+          "url": "https://api.bybit.com/v5/market/tickers?category=spot&symbol=BTCUSDT",
+          "parser": "result.list[0].lastPrice",
+          "weight": 0.93,
+          "enabled": true
+        },
+        {
+          "name": "Gemini",
+          "url": "https://api.gemini.com/v1/pubticker/btcusd",
+          "parser": "last",
+          "weight": 0.92,
+          "enabled": true
+        },
+        {
+          "name": "Bitfinex",
+          "url": "https://api-pub.bitfinex.com/v2/ticker/tBTCUSD",
+          "parser": "[6]",
+          "weight": 0.91,
+          "enabled": true
+        },
+        {
+          "name": "Huobi",
+          "url": "https://api.huobi.pro/market/detail/merged?symbol=btcusdt",
+          "parser": "tick.close",
+          "weight": 0.90,
+          "enabled": true
+        },
+        {
+          "name": "Gate",
+          "url": "https://api.gateio.ws/api/v4/spot/tickers?currency_pair=BTC_USDT",
+          "parser": "[0].last",
+          "weight": 0.89,
+          "enabled": true
+        },
+        {
+          "name": "Chainlink",
+          "url": "https://feed.chain.link/btc-usd",
+          "parser": "price",
+          "weight": 0.99,
+          "enabled": true,
+          "fallback": true
+        }
+      ]
+    }
+  ],
+  "fallback": {
+    "enabled": true,
+    "minSources": 3,
+    "chainlinkThreshold": 3,
+    "degradeWeights": [10, 7, 5],
+    "timeoutMs": 5000
+  },
+  "reliability": {
+    "file": "reliability.json",
+    "updateOnDeviation": true,
+    "clamp": [0.80, 0.99],
+    "emaAlpha": 0.1
+  }
+}
