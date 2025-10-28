@@ -35,7 +35,9 @@ jobs:
           cache: 'pip'
 
       - name: Install Python deps
-        run: pip install requests eth-utils pandas scipy aiohttp jq
+        run: |
+          sudo apt-get update && sudo apt-get install -y jq
+          pip install requests eth-utils pandas scipy aiohttp
 
       - name: Set up Node.js
         uses: actions/setup-node@v4
@@ -197,12 +199,15 @@ Live: athena-ui.vercel.app
       # --------------------------------------------------------
       # 9. Final Summary
       # --------------------------------------------------------
-      - name: Summary
+      - name: Final Summary
+        shell: bash
         run: |
-          echo "ATHENA v2.5 — TRUTH ENGINE ACTIVE"
+          echo "========================================"
+          echo "🧠 ATHENA v2.5 — TRUTH ENGINE ACTIVE"
           echo "Epoch: $EPOCH"
           echo "TruthRate: $TRUTH_RATE%"
           echo "TruthPower: $TRUTH_POWER"
           echo "MerkleRoot: $MERKLE_ROOT"
           echo "IPFS: ipfs://$HASH"
           echo "View: https://ipfs.io/ipfs/$HASH"
+          echo "========================================"
