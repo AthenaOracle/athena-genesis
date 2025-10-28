@@ -1,4 +1,4 @@
-name: Athena Epoch Runner v2.5 — Truth Engine
+name: Athena Epoch Runner v2.6 — Truth Engine
 
 on:
   schedule:
@@ -13,6 +13,7 @@ jobs:
   run-epoch:
     runs-on: ubuntu-latest
     env:
+      # These are populated once the corresponding steps run
       EPOCH: ${{ steps.epoch.outputs.epoch }}
       IPFS_HASH: ${{ steps.ipfs.outputs.hash }}
       MERKLE_ROOT: ${{ steps.run.outputs.merkle_root }}
@@ -21,7 +22,7 @@ jobs:
 
     steps:
       # --------------------------------------------------------
-      # 1. Checkout + Setup
+      # 1) Checkout + Setup
       # --------------------------------------------------------
       - name: Checkout
         uses: actions/checkout@v4
@@ -36,6 +37,7 @@ jobs:
 
       - name: Install Python deps
         run: |
+          set -euo pipefail
           sudo apt-get update && sudo apt-get install -y jq
           pip install requests eth-utils pandas scipy aiohttp
 
@@ -45,74 +47,105 @@ jobs:
           node-version: 20
           cache: 'npm'
 
-      - name: Install IPFS tools
-        run: npm install -g ipfs-only-hash ethers@6
+      - name: Install Node tools
+        run: |
+          set -euo pipefail
+          npm install -g ipfs-only-hash ethers@6
 
       # --------------------------------------------------------
-      # 2. Determine Next Epoch
+      # 2) Determine Next Epoch
       # --------------------------------------------------------
       - name: Get next epoch
         id: epoch
         shell: bash
         run: |
+          set -euo pipefail
           if [ ! -f ledger.csv ]; then
-            echo "epoch=1" >> $GITHUB_OUTPUT
+            echo "epoch=1" >> "$GITHUB_OUTPUT"
           else
-            last=$(tail -n 1 ledger.csv | cut -d',' -f2)
-            echo "epoch=$((last + 1))" >> $GITHUB_OUTPUT
+            last=$(tail -n 1 ledger.csv | cut -d',' -f2 || echo 0)
+            last=${last:-0}
+            echo "epoch=$((last + 1))" >> "$GITHUB_OUTPUT"
           fi
 
       # --------------------------------------------------------
-      # 3. Run Athena Core + Benchmark
+      # 3) Run Athena Core + Benchmark
       # --------------------------------------------------------
       - name: Run Athena Truth Engine
         id: run
         env:
           EPOCH: ${{ steps.epoch.outputs.epoch }}
         run: |
-          python brain.py --epoch $EPOCH --pool 190000 --dry-run=false
-          python benchmark.py
+          set -euo pipefail
 
-          TRUTH_RATE=$(jq -r '.truthRate' "Epoch Report/metrics.json")
-          TRUTH_POWER=$(jq -r '.truthPowerIndex' "Epoch Report/metrics.json")
-          MERKLE=$(jq -r '.merkleRoot' "Epoch Report/epoch_${EPOCH}_report.json")
+          # Run core
+          python brain.py --epoch "$EPOCH" --pool 190000 --dry-run=false
 
-          echo "merkle_root=$MERKLE" >> $GITHUB_OUTPUT
-          echo "truth_rate=$TRUTH_RATE" >> $GITHUB_OUTPUT
-          echo "truth_power=$TRUTH_POWER" >> $GITHUB_OUTPUT
+          # Optional: benchmark
+          python benchmark.py || true
+
+          # Extract metrics safely
+          TRUTH_RATE=$(jq -r '.truthRate // .truth_rate // "0"' "Epoch Report/metrics.json")
+          TRUTH_POWER=$(jq -r '.truthPowerIndex // .truth_power // "0"' "Epoch Report/metrics.json")
+          MERKLE=$(jq -r '.merkleRoot // .merkle_root' "Epoch Report/epoch_${EPOCH}_report.json")
+
+          # Emit step outputs
+          echo "merkle_root=$MERKLE"       >> "$GITHUB_OUTPUT"
+          echo "truth_rate=$TRUTH_RATE"    >> "$GITHUB_OUTPUT"
+          echo "truth_power=$TRUTH_POWER"  >> "$GITHUB_OUTPUT"
 
       # --------------------------------------------------------
-      # 4. Compute IPFS CID (with fallback)
+      # 4) Compute IPFS CID (hash only)
       # --------------------------------------------------------
       - name: Compute IPFS CID
         id: ipfs
         run: |
-          HASH=$(ipfs-only-hash "Epoch Report/epoch_${EPOCH}_report.json" || echo "local-hash-error")
-          echo "hash=$HASH" >> $GITHUB_OUTPUT
-          echo "ipfs://$HASH"
+          set -euo pipefail
+          FILE="Epoch Report/epoch_${EPOCH}_report.json"
+          if [ ! -f "$FILE" ]; then
+            echo "Report file not found: $FILE" >&2
+            exit 1
+          fi
+          CID=$(ipfs-only-hash "$FILE")
+          echo "hash=$CID" >> "$GITHUB_OUTPUT"
+          echo "ipfs://$CID"
 
       # --------------------------------------------------------
-      # 5. Update manifest + metrics
+      # 5) Update manifest + metrics
       # --------------------------------------------------------
       - name: Update manifest & metrics
         run: |
-          jq ".latestEpoch = $EPOCH | .truthRate = $TRUTH_RATE | .truthPower = $TRUTH_POWER | .ipfsReport = \"ipfs://$HASH\"" manifest.json > tmp.json && mv tmp.json manifest.json
-          cp "Epoch Report/metrics.json" .
+          set -euo pipefail
+          # Use the job-level env var for the IPFS cid: $IPFS_HASH
+          jq \
+            ".latestEpoch = ($EPOCH|tonumber) \
+             | .truthRate = ($TRUTH_RATE|tonumber) \
+             | .truthPower = ($TRUTH_POWER|tonumber) \
+             | .ipfsReport = \"ipfs://$IPFS_HASH\"" \
+            manifest.json > tmp.json
+          mv tmp.json manifest.json
+
+          # Bring metrics up to repo root (optional)
+          cp "Epoch Report/metrics.json" ./metrics.json
 
       # --------------------------------------------------------
-      # 6. Commit & Push (safe)
+      # 6) Commit & Push (safe)
       # --------------------------------------------------------
       - name: Commit & Push
         run: |
+          set -euo pipefail
           git config user.name "AthenaTruthBot"
           git config user.email "athena@truth.engine"
           git add "Epoch Report" ledger.csv metrics.json manifest.json continuity.log || true
-          git diff --quiet && echo "No changes to commit." && exit 0
-          git commit -m "Epoch $EPOCH | TruthRate: $TRUTH_RATE% | TruthPower: $TRUTH_POWER | ipfs://$HASH"
+          if git diff --cached --quiet; then
+            echo "No changes to commit."
+            exit 0
+          fi
+          git commit -m "Epoch $EPOCH | TruthRate: $TRUTH_RATE% | TruthPower: $TRUTH_POWER | ipfs://$IPFS_HASH"
           git push
 
       # --------------------------------------------------------
-      # 6.5 Publish Merkle Root → Base (with retry)
+      # 6.5) Publish Merkle Root → Base (with retry, ESM)
       # --------------------------------------------------------
       - name: Publish Merkle Root to Base
         if: success()
@@ -123,14 +156,16 @@ jobs:
           EPOCH: ${{ steps.epoch.outputs.epoch }}
           MERKLE_ROOT: ${{ steps.run.outputs.merkle_root }}
         run: |
+          set -euo pipefail
           echo "🪙 Publishing Merkle root $MERKLE_ROOT for epoch $EPOCH to RewardClaim..."
-          node -e "
+          # ethers v6 is ESM-only, so we must run Node in module mode:
+          node --input-type=module -e "
             import { ethers } from 'ethers';
             const provider = new ethers.JsonRpcProvider(process.env.RPC_URL);
             const wallet = new ethers.Wallet(process.env.PRIVATE_KEY, provider);
             const abi = ['function setMerkleRoot(uint256 epoch, bytes32 root) external'];
             const c = new ethers.Contract(process.env.CONTRACT_ADDR, abi, wallet);
-            (async () => {
+            const main = async () => {
               for (let i = 0; i < 3; i++) {
                 try {
                   const tx = await c.setMerkleRoot(
@@ -140,213 +175,50 @@ jobs:
                   console.log('TX sent:', tx.hash);
                   await tx.wait();
                   console.log('✅ Merkle root published.');
-                  break;
+                  return;
                 } catch (err) {
-                  console.error('Attempt', i + 1, 'failed:', err.message);
+                  console.error('Attempt', i + 1, 'failed:', err?.message ?? err);
                   if (i === 2) process.exit(1);
                   await new Promise(r => setTimeout(r, 15000));
                 }
               }
-            })();
+            };
+            main();
           "
 
       # --------------------------------------------------------
-      # 7. Announce on X + Discord
+      # 7) Announce on X + Discord
       # --------------------------------------------------------
       - name: Tweet & Notify
         env:
           X_BOT_TOKEN: ${{ secrets.X_BOT_TOKEN }}
           DISCORD_WEBHOOK: ${{ secrets.DISCORD_WEBHOOK }}
-        run: |
-          TWEET="Epoch $EPOCH closed
-
-name: Athena Epoch Runner v2.5 — Truth Engine
-
-on:
-  schedule:
-    - cron: '0 0 * * 0'   # Every Sunday 00:00 UTC
-  workflow_dispatch:
-
-permissions:
-  contents: write
-  packages: read
-
-jobs:
-  run-epoch:
-    runs-on: ubuntu-latest
-    env:
-      EPOCH: ${{ steps.epoch.outputs.epoch }}
-      IPFS_HASH: ${{ steps.ipfs.outputs.hash }}
-      MERKLE_ROOT: ${{ steps.run.outputs.merkle_root }}
-      TRUTH_RATE: ${{ steps.run.outputs.truth_rate }}
-      TRUTH_POWER: ${{ steps.run.outputs.truth_power }}
-
-    steps:
-      # --------------------------------------------------------
-      # 1. Checkout + Setup
-      # --------------------------------------------------------
-      - name: Checkout
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: '3.11'
-          cache: 'pip'
-
-      - name: Install Python deps
-        run: |
-          sudo apt-get update && sudo apt-get install -y jq
-          pip install requests eth-utils pandas scipy aiohttp
-
-      - name: Set up Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: 20
-          cache: 'npm'
-
-      - name: Install IPFS tools
-        run: npm install -g ipfs-only-hash ethers@6
-
-      # --------------------------------------------------------
-      # 2. Determine Next Epoch
-      # --------------------------------------------------------
-      - name: Get next epoch
-        id: epoch
         shell: bash
         run: |
-          if [ ! -f ledger.csv ]; then
-            echo "epoch=1" >> $GITHUB_OUTPUT
-          else
-            last=$(tail -n 1 ledger.csv | cut -d',' -f2)
-            echo "epoch=$((last + 1))" >> $GITHUB_OUTPUT
-          fi
-
-      # --------------------------------------------------------
-      # 3. Run Athena Core + Benchmark
-      # --------------------------------------------------------
-      - name: Run Athena Truth Engine
-        id: run
-        env:
-          EPOCH: ${{ steps.epoch.outputs.epoch }}
-        run: |
-          python brain.py --epoch $EPOCH --pool 190000 --dry-run=false
-          python benchmark.py
-
-          TRUTH_RATE=$(jq -r '.truthRate' "Epoch Report/metrics.json")
-          TRUTH_POWER=$(jq -r '.truthPowerIndex' "Epoch Report/metrics.json")
-          MERKLE=$(jq -r '.merkleRoot' "Epoch Report/epoch_${EPOCH}_report.json")
-
-          echo "merkle_root=$MERKLE" >> $GITHUB_OUTPUT
-          echo "truth_rate=$TRUTH_RATE" >> $GITHUB_OUTPUT
-          echo "truth_power=$TRUTH_POWER" >> $GITHUB_OUTPUT
-
-      # --------------------------------------------------------
-      # 4. Compute IPFS CID
-      # --------------------------------------------------------
-      - name: Compute IPFS CID
-        id: ipfs
-        run: |
-          HASH=$(ipfs-only-hash "Epoch Report/epoch_${EPOCH}_report.json" || echo "local-hash-error")
-          echo "hash=$HASH" >> $GITHUB_OUTPUT
-          echo "ipfs://$HASH"
-
-      # --------------------------------------------------------
-      # 5. Update manifest + metrics
-      # --------------------------------------------------------
-      - name: Update manifest & metrics
-        run: |
-          jq ".latestEpoch = $EPOCH | .truthRate = $TRUTH_RATE | .truthPower = $TRUTH_POWER | .ipfsReport = \"ipfs://$HASH\"" manifest.json > tmp.json && mv tmp.json manifest.json
-          cp "Epoch Report/metrics.json" .
-
-      # --------------------------------------------------------
-      # 6. Commit & Push
-      # --------------------------------------------------------
-      - name: Commit & Push
-        run: |
-          git config user.name "AthenaTruthBot"
-          git config user.email "athena@truth.engine"
-          git add "Epoch Report" ledger.csv metrics.json manifest.json continuity.log || true
-          git diff --quiet && echo "No changes to commit." && exit 0
-          git commit -m "Epoch $EPOCH | TruthRate: $TRUTH_RATE% | TruthPower: $TRUTH_POWER | ipfs://$HASH"
-          git push
-
-      # --------------------------------------------------------
-      # 6.5 Publish Merkle Root → Base
-      # --------------------------------------------------------
-      - name: Publish Merkle Root to Base
-        if: success()
-        env:
-          RPC_URL: ${{ secrets.BASE_RPC_URL }}
-          PRIVATE_KEY: ${{ secrets.BASE_DEPLOYER_KEY }}
-          CONTRACT_ADDR: ${{ secrets.REWARDCLAIM_ADDRESS }}
-          EPOCH: ${{ steps.epoch.outputs.epoch }}
-          MERKLE_ROOT: ${{ steps.run.outputs.merkle_root }}
-        run: |
-          echo "🪙 Publishing Merkle root $MERKLE_ROOT for epoch $EPOCH to RewardClaim..."
-          node -e "
-            import { ethers } from 'ethers';
-            const provider = new ethers.JsonRpcProvider(process.env.RPC_URL);
-            const wallet = new ethers.Wallet(process.env.PRIVATE_KEY, provider);
-            const abi = ['function setMerkleRoot(uint256 epoch, bytes32 root) external'];
-            const c = new ethers.Contract(process.env.CONTRACT_ADDR, abi, wallet);
-            (async () => {
-              for (let i = 0; i < 3; i++) {
-                try {
-                  const tx = await c.setMerkleRoot(
-                    BigInt(process.env.EPOCH),
-                    process.env.MERKLE_ROOT
-                  );
-                  console.log('TX sent:', tx.hash);
-                  await tx.wait();
-                  console.log('✅ Merkle root published.');
-                  break;
-                } catch (err) {
-                  console.error('Attempt', i + 1, 'failed:', err.message);
-                  if (i === 2) process.exit(1);
-                  await new Promise(r => setTimeout(r, 15000));
-                }
-              }
-            })();
-          "
-
-      # --------------------------------------------------------
-      # 7. Announce on X + Discord
-      # --------------------------------------------------------
-      - name: Tweet & Notify
-        env:
-          X_BOT_TOKEN: ${{ secrets.X_BOT_TOKEN }}
-          DISCORD_WEBHOOK: ${{ secrets.DISCORD_WEBHOOK }}
-        run: |
-          TWEET="Epoch $EPOCH closed
-
-TruthRate: $TRUTH_RATE%
-TruthPower: $TRUTH_POWER
-
-Bitcoin has hashrate.
-Athena has TruthRate.
-
-Live: athena-ui.vercel.app
-#AthenaIsTruth"
-
-          curl -X POST \
+          set -euo pipefail
+          # Compose a compact, single-line tweet (no broken heredoc)
+          TWEET="🧠 Athena Epoch $EPOCH closed — TruthRate: $TRUTH_RATE% | TruthPower: $TRUTH_POWER | ipfs://$IPFS_HASH"
+          # Tweet (best-effort)
+          curl -sS -X POST \
             -H "Authorization: Bearer $X_BOT_TOKEN" \
             -H "Content-Type: application/json" \
-            -d "{\"text\":\"$TWEET\"}" \
-            https://api.twitter.com/2/tweets
+            -d "{\"text\": \"$TWEET\"}" \
+            https://api.twitter.com/2/tweets || true
 
-          curl -X POST -H "Content-Type: application/json" \
-            -d "{\"content\": \"**Epoch $EPOCH Closed** | TruthRate: $TRUTH_RATE% | TruthPower: $TRUTH_POWER | [View Report](https://ipfs.io/ipfs/$HASH)\"}" \
-            $DISCORD_WEBHOOK
+          # Discord (best-effort)
+          curl -sS -X POST \
+            -H "Content-Type: application/json" \
+            -d "{\"content\": \"**Epoch $EPOCH Closed** | TruthRate: $TRUTH_RATE% | TruthPower: $TRUTH_POWER | <https://ipfs.io/ipfs/$IPFS_HASH>\"}" \
+            "$DISCORD_WEBHOOK" || true
 
       # --------------------------------------------------------
-      # 8. Continuity Log + Artifact Backup
+      # 8) Continuity Log + Artifact Backup
       # --------------------------------------------------------
       - name: Continuity Log
+        shell: bash
         run: |
-          echo "$(date -u) | Epoch $EPOCH | Root $MERKLE_ROOT | TruthRate $TRUTH_RATE | Power $TRUTH_POWER | IPFS $HASH" >> continuity.log
+          set -euo pipefail
+          echo "$(date -u) | Epoch $EPOCH | Root $MERKLE_ROOT | TruthRate $TRUTH_RATE | Power $TRUTH_POWER | IPFS $IPFS_HASH" >> continuity.log
 
       - name: Upload Summary Artifact
         uses: actions/upload-artifact@v4
@@ -359,17 +231,18 @@ Live: athena-ui.vercel.app
             continuity.log
 
       # --------------------------------------------------------
-      # 9. Final Summary
+      # 9) Final Summary
       # --------------------------------------------------------
       - name: Final Summary
         shell: bash
         run: |
+          set -euo pipefail
           echo "========================================"
-          echo "🧠 ATHENA v2.5 — TRUTH ENGINE ACTIVE"
+          echo "🧠 ATHENA v2.6 — TRUTH ENGINE ACTIVE"
           echo "Epoch: $EPOCH"
           echo "TruthRate: $TRUTH_RATE%"
           echo "TruthPower: $TRUTH_POWER"
           echo "MerkleRoot: $MERKLE_ROOT"
-          echo "IPFS: ipfs://$HASH"
-          echo "View: https://ipfs.io/ipfs/$HASH"
+          echo "IPFS: ipfs://$IPFS_HASH"
+          echo "View: https://ipfs.io/ipfs/$IPFS_HASH"
           echo "========================================"
