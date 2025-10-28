@@ -1,6 +1,6 @@
 /**
  * @file claim.js
- * @description Handles ATA reward claims and status checks via Viem (Base network).
+ * @description Handles ATA reward claims, verification, and status checks via Viem (Base network).
  */
 
 import {
@@ -13,23 +13,28 @@ import {
 import { base } from "viem/chains";
 import RewardClaimABI from "../abi/RewardClaimABI.json";
 
-const CONTRACT_ADDRESS = "0x16DEEC9B1Bc2F95b75CA09BD2585aD2C66CdeCdC";
+// 🪙 Contract: RewardClaim.sol
+export const CONTRACT_ADDRESS = "0x16DEEC9B1Bc2F95b75CA09BD2585aD2C66CdeCdC";
 
-/* 🔹 Shared Clients */
-const publicClient = createPublicClient({
+// ---------------------------------------------------------------------------
+// 🔹 Shared Clients
+// ---------------------------------------------------------------------------
+export const publicClient = createPublicClient({
   chain: base,
   transport: custom(window.ethereum || null),
 });
 
+// ---------------------------------------------------------------------------
+// 🔸 Network Guard
+// ---------------------------------------------------------------------------
 /**
- * Ensures wallet is connected to Base network.
- * Prompts user if connected elsewhere.
+ * Ensures the connected wallet is on Base Mainnet (chainId 8453 / 0x2105).
+ * Prompts the user to switch networks if needed.
  */
 export async function ensureBaseNetwork() {
   if (!window.ethereum) throw new Error("No wallet provider detected");
   const chainId = await window.ethereum.request({ method: "eth_chainId" });
   if (chainId !== "0x2105") {
-    // 0x2105 = Base Mainnet
     await window.ethereum.request({
       method: "wallet_switchEthereumChain",
       params: [{ chainId: "0x2105" }],
@@ -37,11 +42,80 @@ export async function ensureBaseNetwork() {
   }
 }
 
+// ---------------------------------------------------------------------------
+// 🔸 Verify Merkle Proof (local utility)
+// ---------------------------------------------------------------------------
 /**
- * Executes the on-chain claim() for an eligible wallet.
+ * Verifies a Merkle proof locally for off-chain validation before claim.
+ * @param {string} leaf - The computed keccak256 leaf.
+ * @param {string[]} proof - Array of proof nodes.
+ * @param {string} root - Merkle root for the epoch.
+ * @returns {boolean}
+ */
+export function verifyProofLocally(leaf, proof, root) {
+  try {
+    if (!leaf || !proof || !root) return false;
+    let computed = leaf;
+    for (const p of proof) {
+      computed =
+        computed < p
+          ? `0x${keccak256(`${computed}${p}`).slice(2)}`
+          : `0x${keccak256(`${p}${computed}`).slice(2)}`;
+    }
+    return computed.toLowerCase() === root.toLowerCase();
+  } catch (err) {
+    console.warn("⚠️ Local proof verification failed:", err);
+    return false;
+  }
+}
+
+// ---------------------------------------------------------------------------
+// 🔸 Estimate Claim Gas
+// ---------------------------------------------------------------------------
+/**
+ * Estimates gas for a given claim transaction.
+ * @param {number|string} epoch - Epoch number
+ * @param {string|number} amount - ATA amount (human-readable)
+ * @param {string[]} proof - Merkle proof
+ * @returns {Promise<number>} Estimated gas limit
+ */
+export async function estimateClaimGas(epoch, amount, proof) {
+  if (!window.ethereum) throw new Error("No wallet provider detected");
+  await ensureBaseNetwork();
+
+  const client = createWalletClient({
+    chain: base,
+    transport: custom(window.ethereum),
+  });
+
+  const [account] = await client.requestAddresses();
+  const amountWei = parseEther(String(amount));
+
+  try {
+    const contract = getContract({
+      address: CONTRACT_ADDRESS,
+      abi: RewardClaimABI,
+      client,
+    });
+    const gas = await contract.estimateGas.claim([epoch, amountWei, proof], {
+      account,
+    });
+    console.log(`⛽ Estimated gas: ${gas}`);
+    return Number(gas);
+  } catch (err) {
+    console.warn("⚠️ Gas estimation failed:", err);
+    return 0;
+  }
+}
+
+// ---------------------------------------------------------------------------
+// 🔸 Claim Reward
+// ---------------------------------------------------------------------------
+/**
+ * Executes the on-chain claim() function for eligible addresses.
  * @param {Object} params
  * @param {number|string} params.epoch - Epoch number
- * @param {string|number} params.amount - Human-readable ATA amount (e.g., "12.3456")
+ * @param {string|number} params.amount - ATA amount (e.g. "12.3456")
  * @param {string[]} params.proof - Merkle proof array
  * @returns {Promise<string>} Transaction hash
  */
@@ -82,14 +156,18 @@ export async function claimReward({ epoch, amount, proof }) {
   }
 }
 
+// ---------------------------------------------------------------------------
+// 🔸 Check Claimed Status
+// ---------------------------------------------------------------------------
 /**
- * Checks if a given wallet has already claimed rewards for a specific epoch.
- * @param {string} wallet - User address
+ * Checks if a wallet has already claimed rewards for a specific epoch.
+ * @param {string} wallet - Address to check
  * @param {number|string} epoch - Epoch number
  * @returns {Promise<boolean>}
  */
 export async function checkClaimed(wallet, epoch) {
-  if (!wallet || !epoch) throw new Error("Missing wallet or epoch");
+  if (!wallet || epoch === undefined) throw new Error("Missing wallet or epoch");
+
   try {
     const contract = getContract({
       address: CONTRACT_ADDRESS,

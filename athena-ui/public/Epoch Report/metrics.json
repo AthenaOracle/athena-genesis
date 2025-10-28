@@ -1,0 +1,39 @@
+{
+  "version": "2.3",
+  "timestamp": "2025-10-27T13:35:48.090598Z",
+  "epochs_analyzed": 3,
+  "latest_epoch": 2,
+  "truthRate": 0.0,
+  "truthPowerIndex": 0.0,
+  "avgCollectiveMIS": 0.0,
+  "avgAgentCount": 3,
+  "agentGrowthPct": 0.0,
+  "errorReductionPct": 100.0,
+  "outperformanceRate": 100.0,
+  "totalRewardsDistributed": 20123.45,
+  "roiVsInitialPool": 101.23,
+  "oracleSourcesUsed": [
+    "Binance",
+    "Bitfinex",
+    "Bitstamp",
+    "Bybit",
+    "Coinbase",
+    "Gate",
+    "Gemini",
+    "Huobi",
+    "Kraken",
+    "OKX"
+  ],
+  "collectiveMisTrend": [
+    0.0,
+    0.0
+  ],
+  "truthRateTrend": [
+    0.0,
+    0.0
+  ],
+  "truthPowerTrend": [
+    0.0,
+    0.0
+  ]
+}

@@ -2,17 +2,17 @@ import { useQuery } from "@tanstack/react-query";
 import { useAccount } from "wagmi";
 import { parse } from "csv-parse/browser/esm";
 import { format } from "date-fns";
-import { sanitizeIpfsUrl } from "../utils/helpers";
 
 /**
- * 🧠 useAthenaData — Unified Athena v2.2 data orchestrator
+ * 🧠 useAthenaData — Unified Athena v2.4 data orchestrator
  * Fetches:
- * - Latest epoch report (from IPFS or local /out/)
- * - Benchmark analytics
- * - Ledger leaderboard
- * - Claim proofs (wallet-based)
- * - Oracle sources + reliability
- * - Collective stats + ROI + trends
+ *  - Latest epoch report (from /Epoch Report/)
+ *  - Benchmark analytics
+ *  - Ledger leaderboard
+ *  - Epoch log history
+ *  - Claim proofs (wallet-based)
+ *  - Oracle sources + reliability
+ *  - Collective stats + ROI + trends
  */
 
 export default function useAthenaData(options = {}) {
@@ -23,20 +23,27 @@ export default function useAthenaData(options = {}) {
     enabled = true,
   } = options;
 
+  // ✅ Consistent base path for local + production
+  const BASE_PATH =
+    import.meta.env.MODE === "development"
+      ? "/Epoch Report"
+      : "https://raw.githubusercontent.com/AthenaOracle/athena-genesis/main/Epoch%20Report";
+
   // 1️⃣ Latest Epoch Report
   const latestEpoch = useQuery({
     queryKey: ["latest-epoch"],
     queryFn: async () => {
       try {
-        // Try fetching the latest index of /out/
-        const res = await fetch(sanitizeIpfsUrl("/out/"));
-        const html = await res.text();
-        const matches = html.match(/epoch_(\d+)_report\.json/g) || [];
-        if (!matches.length) throw new Error("No epoch reports found.");
-        const epochs = matches.map((m) => parseInt(m.match(/epoch_(\d+)/)[1]));
-        const latest = Math.max(...epochs);
-        const reportUrl = sanitizeIpfsUrl(`/out/epoch_${latest}_report.json`);
+        const res = await fetch(`${BASE_PATH}/metrics.json`);
+        if (!res.ok) throw new Error("Metrics not found");
+
+        const metrics = await res.json();
+        const latest =
+          metrics.latest_epoch ?? metrics.latestEpoch ?? metrics.current ?? 0;
+
+        const reportUrl = `${BASE_PATH}/epoch_${latest}_report.json`;
         const report = await fetch(reportUrl).then((r) => r.json());
+
         return { epoch: latest, url: reportUrl, ...report };
       } catch (err) {
         console.warn("[useAthenaData] Fallback to last-known epoch:", err);
@@ -52,7 +59,7 @@ export default function useAthenaData(options = {}) {
   const benchmark = useQuery({
     queryKey: ["benchmark"],
     queryFn: async () => {
-      const url = sanitizeIpfsUrl("/out/benchmark_report.json");
+      const url = `${BASE_PATH}/benchmark_report.json`;
       const r = await fetch(url);
       if (!r.ok) throw new Error("Benchmark report unavailable.");
       return await r.json();
@@ -61,11 +68,12 @@ export default function useAthenaData(options = {}) {
     enabled: enabled && !!latestEpoch.data,
   });
 
-  // 3️⃣ Ledger Leaderboard
+  // 3️⃣ Leaderboard (from ledger.csv)
   const leaderboard = useQuery({
     queryKey: ["leaderboard"],
     queryFn: async () => {
-      const res = await fetch(sanitizeIpfsUrl("/ledger.csv"));
+      const res = await fetch("/ledger.csv");
+      if (!res.ok) throw new Error("Ledger not found");
       const text = await res.text();
 
       return new Promise((resolve) => {
@@ -98,19 +106,22 @@ export default function useAthenaData(options = {}) {
     queryKey: ["epoch-history"],
     queryFn: async () => {
       try {
-        const res = await fetch(sanitizeIpfsUrl("/out/"));
-        const html = await res.text();
-        const matches = html.match(/epoch_(\d+)_report\.json/g) || [];
-        return matches
-          .map((m) => {
-            const epoch = parseInt(m.match(/epoch_(\d+)/)[1]);
-            return {
-              epoch,
-              url: sanitizeIpfsUrl(`/out/epoch_${epoch}_report.json`),
-            };
-          })
-          .sort((a, b) => b.epoch - a.epoch);
-      } catch {
+        const res = await fetch(`${BASE_PATH}/metrics.json`);
+        if (!res.ok) return [];
+        const data = await res.json();
+        const total =
+          data.epochs_analyzed || data.latest_epoch || data.total_epochs || 0;
+
+        const arr = [];
+        for (let i = total - 1; i >= 0; i--) {
+          arr.push({
+            epoch: i,
+            url: `${BASE_PATH}/epoch_${i}_report.json`,
+          });
+        }
+        return arr;
+      } catch (err) {
+        console.warn("⚠️ Epoch history load failed:", err);
         return [];
       }
     },
@@ -128,7 +139,6 @@ export default function useAthenaData(options = {}) {
       );
       if (!claim) return null;
 
-      // Match proof by index, since proofs are stored index-keyed
       const idx = latestEpoch.data.claims.indexOf(claim);
       const proofArr = latestEpoch.data.proofs?.[String(idx)] || [];
 
@@ -151,7 +161,7 @@ export default function useAthenaData(options = {}) {
     bonus: latestEpoch.data?.bonusTriggered || false,
     difficulty: latestEpoch.data?.epochDifficulty || 0.9,
     agentCount: latestEpoch.data?.agentCount || 0,
-    configVersion: latestEpoch.data?.configVersion || "2.0",
+    configVersion: latestEpoch.data?.configVersion || "2.4",
   };
 
   const roi = benchmark.data?.simulated_roi || {};
@@ -178,7 +188,7 @@ export default function useAthenaData(options = {}) {
   // 8️⃣ Meta Summary
   const meta = {
     latestEpoch: latestEpoch.data?.epoch || 0,
-    version: latestEpoch.data?.configVersion || "2.2",
+    version: latestEpoch.data?.configVersion || "2.4",
     lastUpdated: new Date().toISOString(),
     sources: oracleSources.length,
   };
@@ -210,4 +220,32 @@ export default function useAthenaData(options = {}) {
       })}`,
     formatDate: (date) => format(new Date(date), "MMM dd, yyyy"),
   };
+}
+
+// ---------------------------------------------------------------------------
+// 🔹 useEpochLog — Lightweight hook for epoch log explorer
+// ---------------------------------------------------------------------------
+export function useEpochLog() {
+  const BASE_PATH =
+    import.meta.env.MODE === "development"
+      ? "/Epoch Report"
+      : "https://raw.githubusercontent.com/AthenaOracle/athena-genesis/main/Epoch%20Report";
+
+  return useQuery({
+    queryKey: ["epoch-log"],
+    queryFn: async () => {
+      try {
+        const res = await fetch(`${BASE_PATH}/epoch_log.json`);
+        if (!res.ok) return [];
+        const data = await res.json();
+        return Array.isArray(data)
+          ? data.sort((a, b) => b.epoch - a.epoch)
+          : [];
+      } catch (err) {
+        console.warn("⚠️ useEpochLog fallback:", err);
+        return [];
+      }
+    },
+    staleTime: 5 * 60 * 1000,
+  });
 }

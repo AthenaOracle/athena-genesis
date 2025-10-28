@@ -1,68 +1,162 @@
-:root {
-  font-family: system-ui, Avenir, Helvetica, Arial, sans-serif;
-  line-height: 1.5;
-  font-weight: 400;
+/* ────────────────────────────────────────────────
+   △ Athena OS v4 — Cognitive Interface System
+   Minimal • Futuristic • Luminous
+────────────────────────────────────────────────── */
 
-  color-scheme: light dark;
-  color: rgba(255, 255, 255, 0.87);
-  background-color: #242424;
+/* Import sleek geometric sans-serif */
+@import url("https://fonts.googleapis.com/css2?family=Satoshi:wght@300;400;500;700;900&display=swap");
 
-  font-synthesis: none;
-  text-rendering: optimizeLegibility;
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
-}
+/* Tailwind layers */
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
 
-a {
-  font-weight: 500;
-  color: #646cff;
-  text-decoration: inherit;
-}
-a:hover {
-  color: #535bf2;
-}
-
-body {
-  margin: 0;
-  display: flex;
-  place-items: center;
-  min-width: 320px;
-  min-height: 100vh;
-}
-
-h1 {
-  font-size: 3.2em;
-  line-height: 1.1;
-}
-
-button {
-  border-radius: 8px;
-  border: 1px solid transparent;
-  padding: 0.6em 1.2em;
-  font-size: 1em;
-  font-weight: 500;
-  font-family: inherit;
-  background-color: #1a1a1a;
-  cursor: pointer;
-  transition: border-color 0.25s;
-}
-button:hover {
-  border-color: #646cff;
-}
-button:focus,
-button:focus-visible {
-  outline: 4px auto -webkit-focus-ring-color;
-}
-
-@media (prefers-color-scheme: light) {
+/* 🌌 Root system variables + base elements */
+@layer base {
   :root {
-    color: #213547;
-    background-color: #ffffff;
+    --font-sans: "Satoshi", system-ui, sans-serif;
+    --accent-gold: #f5c84b;
+    --accent-amber: #fbbf24;
+    --accent-cyan: #00e0ff;
+    --bg-primary: #09090b;
+    --bg-secondary: #0e0e10;
+    --glass: rgba(255, 255, 255, 0.04);
+    --text-primary: rgba(255, 255, 255, 0.95);
+    --text-secondary: rgba(255, 255, 255, 0.65);
+    color-scheme: dark;
   }
+
+  html,
+  body {
+    margin: 0;
+    padding: 0;
+    min-height: 100vh;
+    background:
+      radial-gradient(circle at 50% 20%, rgba(245, 200, 75, 0.08) 0%, transparent 60%),
+      linear-gradient(180deg, var(--bg-primary) 0%, var(--bg-secondary) 100%);
+    background-attachment: fixed;
+    color: var(--text-primary);
+    font-family: var(--font-sans);
+    letter-spacing: -0.01em;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    text-rendering: optimizeLegibility;
+    transition: background 0.4s ease;
+  }
+
+  a {
+    font-weight: 500;
+    color: var(--accent-cyan);
+    text-decoration: none;
+    transition: color 0.3s ease;
+  }
+
   a:hover {
-    color: #747bff;
+    color: var(--accent-gold);
   }
+
   button {
-    background-color: #f9f9f9;
+    border-radius: 12px;
+    border: 1px solid transparent;
+    padding: 0.65em 1.3em;
+    font-size: 1em;
+    font-weight: 500;
+    font-family: var(--font-sans);
+    background: linear-gradient(135deg, rgba(255, 255, 255, 0.06), rgba(255, 255, 255, 0.03));
+    color: var(--text-primary);
+    cursor: pointer;
+    transition: all 0.25s ease;
+    backdrop-filter: blur(8px);
+  }
+
+  button:hover {
+    border-color: var(--accent-amber);
+    background: linear-gradient(135deg, rgba(250, 204, 21, 0.12), rgba(255, 255, 255, 0.04));
+    transform: translateY(-1px);
+    box-shadow: 0 0 12px rgba(250, 204, 21, 0.25);
+  }
+
+  button:focus {
+    outline: 2px solid var(--accent-amber);
+    outline-offset: 3px;
+  }
+
+  h1,
+  h2,
+  h3,
+  h4 {
+    font-weight: 700;
+    letter-spacing: -0.02em;
+    color: var(--text-primary);
+  }
+
+  h1 {
+    font-size: 2.6rem;
+    line-height: 1.1;
+    background: linear-gradient(90deg, var(--accent-gold), var(--accent-cyan));
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+  }
+
+  p {
+    color: var(--text-secondary);
+    line-height: 1.7;
+  }
+
+  ::-webkit-scrollbar {
+    width: 6px;
+  }
+
+  ::-webkit-scrollbar-thumb {
+    background: rgba(250, 204, 21, 0.2);
+    border-radius: 10px;
+  }
+
+  ::-webkit-scrollbar-thumb:hover {
+    background: rgba(250, 204, 21, 0.35);
+  }
+
+  ::selection {
+    background: rgba(245, 200, 75, 0.25);
+    color: #fff;
+  }
+
+  button:focus:not(:focus-visible) {
+    outline: none;
   }
 }
+
+/* ────────────────────────────────────────────────
+   Component + Utility Layers
+────────────────────────────────────────────────── */
+@layer components {
+  .glass {
+    background-color: rgba(255, 255, 255, 0.05); /* ✅ replaces bg-white/5 */
+    @apply backdrop-blur-lg border border-white/20 rounded-xl shadow-xl;
+  }
+
+  .glass:hover {
+    @apply border-white/30 shadow-2xl;
+  }
+
+  .panel {
+    @apply glass w-full p-6 sm:p-8 transition-all duration-300;
+  }
+
+  .fade-in {
+    animation: fadeIn 0.6s ease both;
+  }
+
+  @keyframes fadeIn {
+    from {
+      opacity: 0;
+      transform: translateY(12px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+}
+
+@layer utilities {}
