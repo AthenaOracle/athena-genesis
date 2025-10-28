@@ -1,4 +1,4 @@
-name: Athena Epoch Runner v2.6 — Truth Engine
+name: Athena Epoch Runner v2.6b — Truth Engine
 
 on:
   schedule:
@@ -12,13 +12,6 @@ permissions:
 jobs:
   run-epoch:
     runs-on: ubuntu-latest
-    env:
-      # These are populated once the corresponding steps run
-      EPOCH: ${{ steps.epoch.outputs.epoch }}
-      IPFS_HASH: ${{ steps.ipfs.outputs.hash }}
-      MERKLE_ROOT: ${{ steps.run.outputs.merkle_root }}
-      TRUTH_RATE: ${{ steps.run.outputs.truth_rate }}
-      TRUTH_POWER: ${{ steps.run.outputs.truth_power }}
 
     steps:
       # --------------------------------------------------------
@@ -78,18 +71,13 @@ jobs:
         run: |
           set -euo pipefail
 
-          # Run core
           python brain.py --epoch "$EPOCH" --pool 190000 --dry-run=false
-
-          # Optional: benchmark
           python benchmark.py || true
 
-          # Extract metrics safely
           TRUTH_RATE=$(jq -r '.truthRate // .truth_rate // "0"' "Epoch Report/metrics.json")
           TRUTH_POWER=$(jq -r '.truthPowerIndex // .truth_power // "0"' "Epoch Report/metrics.json")
           MERKLE=$(jq -r '.merkleRoot // .merkle_root' "Epoch Report/epoch_${EPOCH}_report.json")
 
-          # Emit step outputs
           echo "merkle_root=$MERKLE"       >> "$GITHUB_OUTPUT"
           echo "truth_rate=$TRUTH_RATE"    >> "$GITHUB_OUTPUT"
           echo "truth_power=$TRUTH_POWER"  >> "$GITHUB_OUTPUT"
@@ -99,6 +87,8 @@ jobs:
       # --------------------------------------------------------
       - name: Compute IPFS CID
         id: ipfs
+        env:
+          EPOCH: ${{ steps.epoch.outputs.epoch }}
         run: |
           set -euo pipefail
           FILE="Epoch Report/epoch_${EPOCH}_report.json"
@@ -114,9 +104,13 @@ jobs:
       # 5) Update manifest + metrics
       # --------------------------------------------------------
       - name: Update manifest & metrics
+        env:
+          EPOCH: ${{ steps.epoch.outputs.epoch }}
+          IPFS_HASH: ${{ steps.ipfs.outputs.hash }}
+          TRUTH_RATE: ${{ steps.run.outputs.truth_rate }}
+          TRUTH_POWER: ${{ steps.run.outputs.truth_power }}
         run: |
           set -euo pipefail
-          # Use the job-level env var for the IPFS cid: $IPFS_HASH
           jq \
             ".latestEpoch = ($EPOCH|tonumber) \
              | .truthRate = ($TRUTH_RATE|tonumber) \
@@ -124,14 +118,17 @@ jobs:
              | .ipfsReport = \"ipfs://$IPFS_HASH\"" \
             manifest.json > tmp.json
           mv tmp.json manifest.json
-
-          # Bring metrics up to repo root (optional)
           cp "Epoch Report/metrics.json" ./metrics.json
 
       # --------------------------------------------------------
       # 6) Commit & Push (safe)
       # --------------------------------------------------------
       - name: Commit & Push
+        env:
+          EPOCH: ${{ steps.epoch.outputs.epoch }}
+          IPFS_HASH: ${{ steps.ipfs.outputs.hash }}
+          TRUTH_RATE: ${{ steps.run.outputs.truth_rate }}
+          TRUTH_POWER: ${{ steps.run.outputs.truth_power }}
         run: |
           set -euo pipefail
           git config user.name "AthenaTruthBot"
@@ -145,7 +142,7 @@ jobs:
           git push
 
       # --------------------------------------------------------
-      # 6.5) Publish Merkle Root → Base (with retry, ESM)
+      # 6.5) Publish Merkle Root → Base (ESM)
       # --------------------------------------------------------
       - name: Publish Merkle Root to Base
         if: success()
@@ -158,7 +155,6 @@ jobs:
         run: |
           set -euo pipefail
           echo "🪙 Publishing Merkle root $MERKLE_ROOT for epoch $EPOCH to RewardClaim..."
-          # ethers v6 is ESM-only, so we must run Node in module mode:
           node --input-type=module -e "
             import { ethers } from 'ethers';
             const provider = new ethers.JsonRpcProvider(process.env.RPC_URL);
@@ -191,21 +187,22 @@ jobs:
       # --------------------------------------------------------
       - name: Tweet & Notify
         env:
+          EPOCH: ${{ steps.epoch.outputs.epoch }}
+          IPFS_HASH: ${{ steps.ipfs.outputs.hash }}
+          TRUTH_RATE: ${{ steps.run.outputs.truth_rate }}
+          TRUTH_POWER: ${{ steps.run.outputs.truth_power }}
           X_BOT_TOKEN: ${{ secrets.X_BOT_TOKEN }}
           DISCORD_WEBHOOK: ${{ secrets.DISCORD_WEBHOOK }}
         shell: bash
         run: |
           set -euo pipefail
-          # Compose a compact, single-line tweet (no broken heredoc)
           TWEET="🧠 Athena Epoch $EPOCH closed — TruthRate: $TRUTH_RATE% | TruthPower: $TRUTH_POWER | ipfs://$IPFS_HASH"
-          # Tweet (best-effort)
           curl -sS -X POST \
             -H "Authorization: Bearer $X_BOT_TOKEN" \
             -H "Content-Type: application/json" \
             -d "{\"text\": \"$TWEET\"}" \
             https://api.twitter.com/2/tweets || true
 
-          # Discord (best-effort)
           curl -sS -X POST \
             -H "Content-Type: application/json" \
             -d "{\"content\": \"**Epoch $EPOCH Closed** | TruthRate: $TRUTH_RATE% | TruthPower: $TRUTH_POWER | <https://ipfs.io/ipfs/$IPFS_HASH>\"}" \
@@ -215,6 +212,12 @@ jobs:
       # 8) Continuity Log + Artifact Backup
       # --------------------------------------------------------
       - name: Continuity Log
+        env:
+          EPOCH: ${{ steps.epoch.outputs.epoch }}
+          IPFS_HASH: ${{ steps.ipfs.outputs.hash }}
+          MERKLE_ROOT: ${{ steps.run.outputs.merkle_root }}
+          TRUTH_RATE: ${{ steps.run.outputs.truth_rate }}
+          TRUTH_POWER: ${{ steps.run.outputs.truth_power }}
         shell: bash
         run: |
           set -euo pipefail
@@ -234,11 +237,17 @@ jobs:
       # 9) Final Summary
       # --------------------------------------------------------
       - name: Final Summary
+        env:
+          EPOCH: ${{ steps.epoch.outputs.epoch }}
+          IPFS_HASH: ${{ steps.ipfs.outputs.hash }}
+          MERKLE_ROOT: ${{ steps.run.outputs.merkle_root }}
+          TRUTH_RATE: ${{ steps.run.outputs.truth_rate }}
+          TRUTH_POWER: ${{ steps.run.outputs.truth_power }}
         shell: bash
         run: |
           set -euo pipefail
           echo "========================================"
-          echo "🧠 ATHENA v2.6 — TRUTH ENGINE ACTIVE"
+          echo "🧠 ATHENA v2.6b — TRUTH ENGINE ACTIVE"
           echo "Epoch: $EPOCH"
           echo "TruthRate: $TRUTH_RATE%"
           echo "TruthPower: $TRUTH_POWER"
