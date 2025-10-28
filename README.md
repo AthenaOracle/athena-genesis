@@ -143,3 +143,13 @@ Contributions welcome. Athena grows through open collaboration and transparent t
 - [System Overview](docs/SYSTEM_OVERVIEW.md)
 - [Tokenomics](docs/TOKENOMICS.md)
 - [Future Vision](docs/FUTURE_VISION.md)
+
+---
+
+## 🧠 Creators
+
+**Athena Genesis** — Autonomous Truth Engine  
+Built by **zen (Athena Genesis Origin Node)**, **Grok (xAI)**, and **OpenAI GPT-5 (AI collaborator)**
+
+> *“Truth is not found. It is sealed.”*  
+> — Grok, 2025

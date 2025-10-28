@@ -1,57 +1,135 @@
 {
   "project": "Athena Genesis",
+  "version": "2.4",
+  "description": "The canonical deployment of the Athena Truth Engine — Base Mainnet genesis instance.",
   "network": {
-    "name": "Base",
+    "name": "Base Mainnet",
     "chainId": 8453,
+    "rpc": "https://mainnet.base.org",
     "explorer": "https://basescan.org"
   },
   "token": {
     "name": "Athena",
     "symbol": "ATA",
     "decimals": 18,
-    "address": "0xYourAtaTokenAddress",
+    "address": "0x72F64821ca2c8117890BF6c9172977865f809f64",
     "totalSupply": "21000000",
     "treasuryReserve": "19000000",
+    "deployerBalance": "2000000",
     "treasuryCap": "1000000"
   },
   "reward": {
     "epochDays": 7,
-    "split": { "agents": 0.60, "burn": 0.20, "treasury": 0.20 },
+    "split": {
+      "agents": 0.60,
+      "burn": 0.20,
+      "treasury": 0.20
+    },
     "claimWindowHours": 48,
     "maxPctPerWallet": 0.10,
-    "newcomer": { "walletAgeDays": 45, "maxSubmissions": 100 },
-    "consistency": { "threshold": 0.60, "minConsecutive": 3 }
+    "newcomer": {
+      "walletAgeDays": 45,
+      "maxSubmissions": 100
+    },
+    "consistency": {
+      "threshold": 0.60,
+      "minConsecutive": 3
+    },
+    "burnPolicy": "20% burn / 20% treasury top-up",
+    "emergencyMint": {
+      "maxMonthlyPct": 0.1,
+      "condition": "Treasury < 100,000 ATA and > 66% multisig approval"
+    }
   },
   "admin": {
-    "treasury": "0xYourTreasuryAddress",
-    "rewardContract": "0xYourRewardClaimAddress",
-    "deployer": "0xYourDeployerAddress"
+    "treasury": "0xb36E25842C2C5ae91586988475E857F4D9643e9A",
+    "rewardContract": "0x16DEEC9B1Bc2F95b75CA09BD2585aD2C66CdeCdC",
+    "deployer": "0x26D067c1BD1762D9bb6EFE783b1FCd925F0E746d",
+    "canonical": true
   },
   "agentSchema": {
     "$schema": "https://json-schema.org/draft/2020-12/schema",
-    "title": "Athena Agent Signal",
+    "title": "Athena Agent Signal Schema",
     "type": "object",
     "required": ["agentId", "wallet", "prediction", "timestamp"],
     "properties": {
-      "agentId": { "type": "string" },
-      "wallet": { "type": "string", "pattern": "^0x[a-fA-F0-9]{40}$" },
+      "agentId": {
+        "type": "string",
+        "description": "Unique agent identifier"
+      },
+      "wallet": {
+        "type": "string",
+        "pattern": "^0x[a-fA-F0-9]{40}$",
+        "description": "Ethereum-compatible wallet address"
+      },
       "prediction": {
         "type": "object",
         "required": ["target", "horizonHours", "direction", "confidence"],
         "properties": {
-          "target": { "type": "string", "description": "e.g., BTC-USD" },
-          "horizonHours": { "type": "integer", "minimum": 1 },
-          "direction": { "type": "string", "enum": ["UP", "DOWN", "FLAT"] },
-          "confidence": { "type": "number", "minimum": 0, "maximum": 1 },
-          "priceTarget": { "type": "number" }
+          "target": {
+            "type": "string",
+            "description": "Prediction target, e.g. BTC-USD"
+          },
+          "horizonHours": {
+            "type": "integer",
+            "minimum": 1,
+            "description": "Forecast horizon in hours"
+          },
+          "direction": {
+            "type": "string",
+            "enum": ["UP", "DOWN", "FLAT"],
+            "description": "Predicted movement direction"
+          },
+          "confidence": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 1,
+            "description": "Confidence score between 0–1"
+          },
+          "priceTarget": {
+            "type": "number",
+            "description": "Optional price target for quantitative scoring"
+          }
         }
       },
-      "timestamp": { "type": "string", "format": "date-time" },
-      "meta": { "type": "object" }
+      "timestamp": {
+        "type": "string",
+        "format": "date-time",
+        "description": "ISO 8601 UTC timestamp"
+      },
+      "meta": {
+        "type": "object",
+        "description": "Optional agent metadata (model version, strategy, notes)"
+      }
     }
   },
   "manifesto": {
-    "ipfs": "ipfs://<PUT_CID_HERE>",
-    "sha256": "<optional-pdf-sha256>"
+    "ipfs":"ipfs://bafybeifygyoiozeof3mvhrpxz6buwuizrbhwr7wtb4hwzbhrc46pstdfqq",
+    "sha256": "4a8e6b7f22d9e1d8b0a0c5f0f9a63e3b4e26cda6e18af21e5343f8189e0dbd9a"
+  },
+  "genesis": {
+    "creator": "zen (Athena Genesis Origin Node)",
+    "collaborators": [
+      {
+        "name": "OpenAI GPT-5",
+        "role": "AI collaborator and system architect",
+        "contribution": "Design synthesis, epistemic architecture, documentation refinement, automation pipeline."
+      },
+      {
+        "name": "Grok (xAI)",
+        "role": "AI philosopher and narrative modeler",
+        "contribution": "Conceptual framing, manifesto co-writing, symbolic reasoning."
+      }
+    ],
+    "wallet": "0x26D067c1BD1762D9bb6EFE783b1FCd925F0E746d",
+    "timestamp": "2025-10-28T00:00:00Z",
+    "genesisSignature": "4a14410a9d8e62f006415981b5e1a15eb4f91931986a7b4846669b5a42adc6ee",
+    "manifesto_ipfs": "ipfs://bafybeifygyoiozeof3mvhrpxz6buwuizrbhwr7wtb4hwzbhrc46pstdfqq",
+    "description": "Canonical genesis proof linking the Manifesto and on-chain deployment."
+  },
+  "proof": {
+    "hashAlgorithm": "SHA256",
+    "contentHash": "4a8e6b7f22d9e1d8b0a0c5f0f9a63e3b4e26cda6e18af21e5343f8189e0dbd9a",
+    "verificationMethod": "Manifesto text + deployer wallet address"
   }
 }
