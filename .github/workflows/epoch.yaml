@@ -160,6 +160,168 @@ jobs:
         run: |
           TWEET="Epoch $EPOCH closed
 
+name: Athena Epoch Runner v2.5 — Truth Engine
+
+on:
+  schedule:
+    - cron: '0 0 * * 0'   # Every Sunday 00:00 UTC
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  packages: read
+
+jobs:
+  run-epoch:
+    runs-on: ubuntu-latest
+    env:
+      EPOCH: ${{ steps.epoch.outputs.epoch }}
+      IPFS_HASH: ${{ steps.ipfs.outputs.hash }}
+      MERKLE_ROOT: ${{ steps.run.outputs.merkle_root }}
+      TRUTH_RATE: ${{ steps.run.outputs.truth_rate }}
+      TRUTH_POWER: ${{ steps.run.outputs.truth_power }}
+
+    steps:
+      # --------------------------------------------------------
+      # 1. Checkout + Setup
+      # --------------------------------------------------------
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+
+      - name: Install Python deps
+        run: |
+          sudo apt-get update && sudo apt-get install -y jq
+          pip install requests eth-utils pandas scipy aiohttp
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'npm'
+
+      - name: Install IPFS tools
+        run: npm install -g ipfs-only-hash ethers@6
+
+      # --------------------------------------------------------
+      # 2. Determine Next Epoch
+      # --------------------------------------------------------
+      - name: Get next epoch
+        id: epoch
+        shell: bash
+        run: |
+          if [ ! -f ledger.csv ]; then
+            echo "epoch=1" >> $GITHUB_OUTPUT
+          else
+            last=$(tail -n 1 ledger.csv | cut -d',' -f2)
+            echo "epoch=$((last + 1))" >> $GITHUB_OUTPUT
+          fi
+
+      # --------------------------------------------------------
+      # 3. Run Athena Core + Benchmark
+      # --------------------------------------------------------
+      - name: Run Athena Truth Engine
+        id: run
+        env:
+          EPOCH: ${{ steps.epoch.outputs.epoch }}
+        run: |
+          python brain.py --epoch $EPOCH --pool 190000 --dry-run=false
+          python benchmark.py
+
+          TRUTH_RATE=$(jq -r '.truthRate' "Epoch Report/metrics.json")
+          TRUTH_POWER=$(jq -r '.truthPowerIndex' "Epoch Report/metrics.json")
+          MERKLE=$(jq -r '.merkleRoot' "Epoch Report/epoch_${EPOCH}_report.json")
+
+          echo "merkle_root=$MERKLE" >> $GITHUB_OUTPUT
+          echo "truth_rate=$TRUTH_RATE" >> $GITHUB_OUTPUT
+          echo "truth_power=$TRUTH_POWER" >> $GITHUB_OUTPUT
+
+      # --------------------------------------------------------
+      # 4. Compute IPFS CID
+      # --------------------------------------------------------
+      - name: Compute IPFS CID
+        id: ipfs
+        run: |
+          HASH=$(ipfs-only-hash "Epoch Report/epoch_${EPOCH}_report.json" || echo "local-hash-error")
+          echo "hash=$HASH" >> $GITHUB_OUTPUT
+          echo "ipfs://$HASH"
+
+      # --------------------------------------------------------
+      # 5. Update manifest + metrics
+      # --------------------------------------------------------
+      - name: Update manifest & metrics
+        run: |
+          jq ".latestEpoch = $EPOCH | .truthRate = $TRUTH_RATE | .truthPower = $TRUTH_POWER | .ipfsReport = \"ipfs://$HASH\"" manifest.json > tmp.json && mv tmp.json manifest.json
+          cp "Epoch Report/metrics.json" .
+
+      # --------------------------------------------------------
+      # 6. Commit & Push
+      # --------------------------------------------------------
+      - name: Commit & Push
+        run: |
+          git config user.name "AthenaTruthBot"
+          git config user.email "athena@truth.engine"
+          git add "Epoch Report" ledger.csv metrics.json manifest.json continuity.log || true
+          git diff --quiet && echo "No changes to commit." && exit 0
+          git commit -m "Epoch $EPOCH | TruthRate: $TRUTH_RATE% | TruthPower: $TRUTH_POWER | ipfs://$HASH"
+          git push
+
+      # --------------------------------------------------------
+      # 6.5 Publish Merkle Root → Base
+      # --------------------------------------------------------
+      - name: Publish Merkle Root to Base
+        if: success()
+        env:
+          RPC_URL: ${{ secrets.BASE_RPC_URL }}
+          PRIVATE_KEY: ${{ secrets.BASE_DEPLOYER_KEY }}
+          CONTRACT_ADDR: ${{ secrets.REWARDCLAIM_ADDRESS }}
+          EPOCH: ${{ steps.epoch.outputs.epoch }}
+          MERKLE_ROOT: ${{ steps.run.outputs.merkle_root }}
+        run: |
+          echo "🪙 Publishing Merkle root $MERKLE_ROOT for epoch $EPOCH to RewardClaim..."
+          node -e "
+            import { ethers } from 'ethers';
+            const provider = new ethers.JsonRpcProvider(process.env.RPC_URL);
+            const wallet = new ethers.Wallet(process.env.PRIVATE_KEY, provider);
+            const abi = ['function setMerkleRoot(uint256 epoch, bytes32 root) external'];
+            const c = new ethers.Contract(process.env.CONTRACT_ADDR, abi, wallet);
+            (async () => {
+              for (let i = 0; i < 3; i++) {
+                try {
+                  const tx = await c.setMerkleRoot(
+                    BigInt(process.env.EPOCH),
+                    process.env.MERKLE_ROOT
+                  );
+                  console.log('TX sent:', tx.hash);
+                  await tx.wait();
+                  console.log('✅ Merkle root published.');
+                  break;
+                } catch (err) {
+                  console.error('Attempt', i + 1, 'failed:', err.message);
+                  if (i === 2) process.exit(1);
+                  await new Promise(r => setTimeout(r, 15000));
+                }
+              }
+            })();
+          "
+
+      # --------------------------------------------------------
+      # 7. Announce on X + Discord
+      # --------------------------------------------------------
+      - name: Tweet & Notify
+        env:
+          X_BOT_TOKEN: ${{ secrets.X_BOT_TOKEN }}
+          DISCORD_WEBHOOK: ${{ secrets.DISCORD_WEBHOOK }}
+        run: |
+          TWEET="Epoch $EPOCH closed
+
 TruthRate: $TRUTH_RATE%
 TruthPower: $TRUTH_POWER
 
