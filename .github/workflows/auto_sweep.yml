@@ -29,7 +29,7 @@ jobs:
         env:
           RPC_URL: ${{ secrets.BASE_RPC_URL }}
           PRIVATE_KEY: ${{ secrets.BASE_DEPLOYER_KEY }}
-          REWARDCLAIM_ADDRESS: 0xB4D87AAe272713CB4a24Ed2ac1E43dc2d32FbD91
+          REWARDCLAIM_ADDRESS: "0xB4D87AAe272713CB4a24Ed2ac1E43dc2d32FbD91"
           DISCORD_WEBHOOK: ${{ secrets.DISCORD_WEBHOOK }}
           X_BOT_TOKEN: ${{ secrets.X_BOT_TOKEN }}
           # Optional: enable safe simulation mode (no TXs)
