@@ -1,0 +1,37 @@
+name: Athena Auto Sweep — Unclaimed Rewards
+
+on:
+  schedule:
+    - cron: '0 0 * * 2'   # Every Tuesday 00:00 UTC (48h after Sunday)
+  workflow_dispatch:       # Allow manual run from Actions tab
+
+jobs:
+  sweep:
+    runs-on: ubuntu-latest
+
+    steps:
+      # 1️⃣ Checkout the repo (so scripts & ABI are available)
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      # 2️⃣ Setup Node.js
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      # 3️⃣ Install ethers (only dependency needed)
+      - name: Install dependencies
+        run: npm install ethers
+
+      # 4️⃣ Run the auto sweep script
+      - name: Sweep unclaimed ATA
+        env:
+          RPC_URL: ${{ secrets.BASE_RPC_URL }}
+          PRIVATE_KEY: ${{ secrets.BASE_DEPLOYER_KEY }}
+          REWARDCLAIM_ADDRESS: 0xB4D87AAe272713CB4a24Ed2ac1E43dc2d32FbD91
+          DISCORD_WEBHOOK: ${{ secrets.DISCORD_WEBHOOK }}
+          X_BOT_TOKEN: ${{ secrets.X_BOT_TOKEN }}
+          # Optional: enable safe simulation mode (no TXs)
+          # DRY_RUN: "true"
+        run: node scripts/auto_sweep.mjs
