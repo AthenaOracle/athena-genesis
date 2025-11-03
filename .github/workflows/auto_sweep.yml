@@ -1,74 +1,36 @@
-// ▽ Athena Genesis — sweep-unclaimed.js (v2.6b)
-// Maintenance utility for RewardClaim contract
-// - Estimates gas before execution
-// - Waits for full confirmation
-// - Improved error visibility and CI-friendly logs
-// - Compatible with ethers@6 (Node 20+)
+name: Athena Auto Sweep v2.7 — RewardClaim Maintenance
 
-// ----------------- imports -----------------
-import { ethers } from "ethers";
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "0 0 * * TUE" # Every Tuesday 00:00 UTC (after 48h claim window)
 
-// ----------------- environment -----------------
-const rpcUrl = process.env.RPC_URL;
-const privateKey = process.env.PRIVATE_KEY;
-const rewardClaimAddress = process.env.REWARDCLAIM_ADDRESS;
-const treasuryAddress = process.env.TREASURY_ADDRESS || null; // optional
+permissions:
+  contents: read
 
-if (!rpcUrl || !privateKey || !rewardClaimAddress) {
-  console.error("❌ Missing one or more required environment variables:");
-  console.error("RPC_URL, PRIVATE_KEY, REWARDCLAIM_ADDRESS must be set.");
-  process.exit(1);
-}
+jobs:
+  sweep-unclaimed:
+    runs-on: ubuntu-latest
 
-// ----------------- provider + wallet -----------------
-const provider = new ethers.JsonRpcProvider(rpcUrl);
-const wallet = new ethers.Wallet(privateKey, provider);
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
-// ----------------- ABI -----------------
-const rewardClaimABI = [
-  "function sweepUnclaimed(uint256 epoch) external",
-];
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
 
-// ----------------- main function -----------------
-async function sweepUnclaimed(epoch) {
-  try {
-    const contract = new ethers.Contract(rewardClaimAddress, rewardClaimABI, wallet);
+      - name: Install dependencies
+        run: npm install ethers@6
 
-    console.log("🧠 Athena Sweep — Epoch:", epoch);
-    console.log("RewardClaim:", rewardClaimAddress);
-    if (treasuryAddress) console.log("Treasury:", treasuryAddress);
-
-    // estimate gas for visibility
-    const gasEstimate = await contract.sweepUnclaimed.estimateGas(epoch);
-    console.log(`Estimated gas: ${gasEstimate.toString()}`);
-
-    // execute transaction
-    const tx = await contract.sweepUnclaimed(epoch);
-    console.log("Transaction hash:", tx.hash);
-
-    const receipt = await tx.wait();
-    console.log("✅ Sweep completed.");
-    console.log("Block:", receipt.blockNumber);
-    console.log("Gas used:", receipt.gasUsed.toString());
-  } catch (error) {
-    console.error("❌ Sweep failed:");
-    console.error(error.reason ?? error.message ?? error);
-    process.exit(1);
-  }
-}
-
-// ----------------- entrypoint -----------------
-(async () => {
-  const epochRaw = process.env.EPOCH;
-  if (!epochRaw) {
-    console.error("❌ EPOCH not provided in environment.");
-    process.exit(1);
-  }
-  const epoch = parseInt(epochRaw, 10);
-  if (isNaN(epoch)) {
-    console.error("❌ Invalid epoch value:", epochRaw);
-    process.exit(1);
-  }
-
-  await sweepUnclaimed(epoch);
-})();
+      - name: Run sweep script
+        env:
+          RPC_URL: ${{ secrets.BASE_RPC_URL }}
+          PRIVATE_KEY: ${{ secrets.BASE_DEPLOYER_KEY }}
+          REWARDCLAIM_ADDRESS: ${{ secrets.REWARDCLAIM_ADDRESS }}
+          TREASURY_ADDRESS: ${{ secrets.TREASURY_ADDRESS }}
+        run: node scripts/auto_sweep.mjs
