@@ -21,11 +21,13 @@ import {
   ShieldCheck,
   Sparkles,
   RefreshCw,
+  Trophy,
 } from "lucide-react";
 import toast from "react-hot-toast";
 import { motion, AnimatePresence } from "framer-motion";
 import Confetti from "react-confetti";
 import { formatNumber, sanitizeIpfsUrl } from "../utils/helpers";
+import { CONTRACTS } from "../config/config";
 
 /* 🧩 Regex validator */
 const isValidAddress = (addr) => /^0x[a-fA-F0-9]{40}$/.test(addr);
@@ -39,7 +41,7 @@ const IPFS_GATEWAYS = [
 
 export default function ClaimRewards() {
   const { account, isConnected, isCorrectChain, connect, switchNetwork } = useWallet();
-  const { claim, epoch, refetchAll } = useAthenaData();
+  const { claim, epoch, refetchAll, metrics } = useAthenaData();
 
   const [inputAddress, setInputAddress] = useState("");
   const [eligible, setEligible] = useState(null);
@@ -56,6 +58,7 @@ export default function ClaimRewards() {
   const [proofModal, setProofModal] = useState(false);
   const [proofResult, setProofResult] = useState(null);
   const [gatewayIndex, setGatewayIndex] = useState(0);
+  const [truthBounty, setTruthBounty] = useState(null);
 
   /* 🪙 Autofill wallet when connected */
   useEffect(() => {
@@ -93,6 +96,11 @@ export default function ClaimRewards() {
     })();
   }, []);
 
+  /* 🧩 Detect Truth Bounty pool info from metrics */
+  useEffect(() => {
+    if (metrics?.truthBounty) setTruthBounty(metrics.truthBounty);
+  }, [metrics]);
+
   /* 🧠 Check eligibility */
   const checkEligibility = useCallback(async () => {
     if (!inputAddress) return toast.error("Enter an address first");
@@ -122,12 +130,12 @@ export default function ClaimRewards() {
         IPFS_GATEWAYS[gatewayIndex] + `epoch_${epoch.epoch}_report.json`
       );
 
-      // ✅ Local proof check (best-effort — depends on your verifyProofLocally impl)
+      // ✅ Local proof check (optional)
       try {
         const verified = await verifyProofLocally(proof, match.amount, match.wallet);
         setProofResult(verified ? "valid" : "invalid");
       } catch {
-        setProofResult(null); // unknown / skipped
+        setProofResult(null);
       }
 
       // ✅ Claimed check
@@ -141,6 +149,7 @@ export default function ClaimRewards() {
           epoch: epoch.epoch,
           amount: readableAmount,
           proof,
+          contract: CONTRACTS.rewardClaim,
         });
         setGasEstimate(gas);
       } catch {
@@ -188,11 +197,11 @@ export default function ClaimRewards() {
         epoch: eligible.epoch,
         amount: eligible.amount,
         proof: eligible.proof,
+        contract: CONTRACTS.rewardClaim,
       });
       setTxHash(hash);
       setConfetti(true);
 
-      // 🧾 Save claim history (lightweight "TX queue")
       const newHistory = [
         { epoch: eligible.epoch, amount: eligible.amount, hash, time: Date.now() },
         ...claimHistory,
@@ -200,13 +209,10 @@ export default function ClaimRewards() {
       localStorage.setItem("athena-claim-history", JSON.stringify(newHistory));
       setClaimHistory(newHistory);
 
-      // 🎉 UX feedback
       toast.success("🎉 Claim successful!");
       localStorage.removeItem("athena-last-unclaimed");
       refetchAll();
       setAlreadyClaimed(true);
-
-      // 🕐 Stop confetti
       setTimeout(() => setConfetti(false), 4000);
     } catch (err) {
       console.error(err);
@@ -219,13 +225,11 @@ export default function ClaimRewards() {
   /* 💡 Allow Enter key to trigger */
   const handleKeyPress = (e) => e.key === "Enter" && checkEligibility();
 
-  /* 🔁 Cycle IPFS gateway if a link is slow / blocked */
   const cycleGateway = () => {
     setGatewayIndex((i) => (i + 1) % IPFS_GATEWAYS.length);
     toast("Switched IPFS gateway");
   };
 
-  /* 🧩 Social share */
   const handleShare = () => {
     if (!eligible?.eligible) return;
     const text = `I just claimed ${eligible.amount} $ATA on Athena Protocol ⚡ #DeFi #Base`;
@@ -238,7 +242,7 @@ export default function ClaimRewards() {
   };
 
   return (
-    <div className="relative max-w-xl mx-auto glass p-6 md:p-8 rounded-2xl space-y-6 border border-white/10">
+    <div className="relative max-w-xl mx-auto glass p-6 md:p-8 rounded-2xl space-y-6 border border-yellow-400/20">
       {confetti && <Confetti numberOfPieces={150} recycle={false} />}
       <button
         onClick={() => setDebugOpen(!debugOpen)}
@@ -254,11 +258,11 @@ export default function ClaimRewards() {
           Claim Your ATA Rewards
         </h2>
         <p className="text-sm text-gray-400 mt-1">
-          Enter any address to check eligibility • Claim requires wallet connection
+          Check if you’re eligible for epoch rewards and Truth Bounty boosts.
         </p>
       </div>
 
-      {/* Address Input */}
+      {/* Wallet Input */}
       <div>
         <label className="text-xs text-gray-400 uppercase tracking-wider">Wallet Address</label>
         <div className="flex gap-2 mt-2">
@@ -273,7 +277,6 @@ export default function ClaimRewards() {
           <button
             onClick={checkEligibility}
             disabled={isChecking || !inputAddress}
-            title={!inputAddress ? "Enter an address to check" : ""}
             className="px-5 py-3 bg-gradient-to-r from-yellow-600 to-amber-600 hover:from-yellow-500 hover:to-amber-500 rounded-xl font-semibold transition flex items-center gap-2 disabled:opacity-50"
           >
             {isChecking ? <Loader2 size={18} className="animate-spin" /> : "Check"}
@@ -281,7 +284,7 @@ export default function ClaimRewards() {
         </div>
       </div>
 
-      {/* Eligibility */}
+      {/* Eligibility Result */}
       <AnimatePresence>
         {eligible && (
           <motion.div
@@ -291,8 +294,8 @@ export default function ClaimRewards() {
             transition={{ duration: 0.3 }}
             className={`p-5 rounded-xl border ${
               eligible.eligible
-                ? "bg-green-900/20 border-green-500/30"
-                : "bg-red-900/20 border-red-500/30"
+                ? "bg-green-900/10 border-green-400/40"
+                : "bg-red-900/10 border-red-400/40"
             }`}
           >
             {eligible.eligible ? (
@@ -301,16 +304,25 @@ export default function ClaimRewards() {
                   <p className="text-green-400 flex items-center gap-2">
                     <CheckCircle size={20} />
                     {alreadyClaimed ? (
-                      <span className="text-yellow-400">Verified on Base Mainnet</span>
+                      <span className="text-yellow-400">Verified on Base</span>
                     ) : (
                       <>
                         Eligible for{" "}
-                        <strong className="text-xl">{eligible.amount} ATA</strong>
+                        <strong className="text-xl text-yellow-400">
+                          {eligible.amount} ATA
+                        </strong>
                       </>
                     )}
                   </p>
                   <CopyButton text={eligible.amount} />
                 </div>
+
+                {truthBounty && (
+                  <div className="mt-2 text-sm text-amber-400 flex items-center gap-2">
+                    <Trophy size={16} />
+                    Truth Bounty Active: +{(truthBounty.avgBoost * 100).toFixed(1)}% Boost
+                  </div>
+                )}
 
                 <p className="text-xs text-gray-400 mt-1">
                   Epoch {eligible.epoch} • Proof:{" "}
@@ -323,10 +335,9 @@ export default function ClaimRewards() {
                   )}
                 </p>
 
-                {/* Gas Estimate + Fiat value */}
                 {gasEstimate && !alreadyClaimed && (
                   <p className="text-xs text-gray-500 mt-2">
-                    ⛽ Estimated gas: {gasEstimate.eth} ETH (~${gasEstimate.usd})
+                    ⛽ Gas: {gasEstimate.eth} ETH (~${gasEstimate.usd})
                   </p>
                 )}
                 {ataPrice && (
@@ -335,7 +346,6 @@ export default function ClaimRewards() {
                   </p>
                 )}
 
-                {/* IPFS Report + Gateway switcher */}
                 <div className="flex items-center gap-2 mt-2">
                   <a
                     href={eligible.reportUrl}
@@ -348,7 +358,6 @@ export default function ClaimRewards() {
                   <button
                     onClick={cycleGateway}
                     className="text-xs text-gray-400 hover:text-gray-200 flex items-center gap-1"
-                    title="Switch IPFS gateway"
                   >
                     <RefreshCw size={12} /> Gateway
                   </button>
@@ -363,7 +372,7 @@ export default function ClaimRewards() {
               </>
             ) : (
               <p className="text-red-400 flex items-center gap-2">
-                <AlertCircle size={20} /> No claimable rewards this epoch — check again later.
+                <AlertCircle size={20} /> No claimable rewards this epoch.
               </p>
             )}
           </motion.div>
@@ -378,7 +387,7 @@ export default function ClaimRewards() {
               onClick={connect}
               className="px-8 py-3 bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 rounded-xl font-semibold transition shadow-lg"
             >
-              Connect Wallet to Claim
+              Connect Wallet
             </button>
           ) : !isCorrectChain ? (
             <button
@@ -391,13 +400,6 @@ export default function ClaimRewards() {
             <button
               onClick={executeClaim}
               disabled={isClaiming || alreadyClaimed}
-              title={
-                alreadyClaimed
-                  ? "Rewards already claimed"
-                  : isClaiming
-                  ? "Submitting transaction..."
-                  : ""
-              }
               className={`px-8 py-3 rounded-xl font-semibold transition shadow-lg flex items-center gap-2 ${
                 alreadyClaimed
                   ? "bg-gray-700/50 cursor-not-allowed text-gray-400"
@@ -406,7 +408,7 @@ export default function ClaimRewards() {
             >
               {isClaiming ? (
                 <>
-                  <Loader2 size={18} className="animate-spin" /> Waiting for confirmation...
+                  <Loader2 size={18} className="animate-spin" /> Waiting...
                 </>
               ) : alreadyClaimed ? (
                 <>
@@ -422,14 +424,14 @@ export default function ClaimRewards() {
         </div>
       )}
 
-      {/* Share & Tx Link */}
+      {/* Share */}
       {txHash && (
         <motion.div
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           className="text-center p-4 bg-black/30 rounded-xl"
         >
-          <p className="text-sm text-gray-400">Transaction Sent to Base</p>
+          <p className="text-sm text-gray-400">Transaction Sent</p>
           <a
             href={`https://basescan.org/tx/${txHash}`}
             target="_blank"
@@ -445,106 +447,6 @@ export default function ClaimRewards() {
             <Share2 size={12} /> Share on X
           </button>
         </motion.div>
-      )}
-
-      {/* Claim History */}
-      {claimHistory.length > 0 && (
-        <div className="mt-6">
-          <button
-            onClick={() => setHistoryOpen(!historyOpen)}
-            className="flex items-center justify-center gap-2 text-yellow-400 hover:text-yellow-300 transition text-sm mx-auto"
-          >
-            <History size={14} /> Claim History
-            {historyOpen ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
-          </button>
-          <AnimatePresence>
-            {historyOpen && (
-              <motion.div
-                initial={{ opacity: 0, height: 0 }}
-                animate={{ opacity: 1, height: "auto" }}
-                exit={{ opacity: 0, height: 0 }}
-                className="mt-3 text-xs text-gray-400 space-y-1"
-              >
-                {claimHistory.map((c, i) => (
-                  <div key={i} className="flex justify-between">
-                    <span>
-                      Epoch {c.epoch} → {c.amount} ATA
-                    </span>
-                    <a
-                      href={`https://basescan.org/tx/${c.hash}`}
-                      target="_blank"
-                      className="text-yellow-400 hover:text-yellow-300 flex items-center gap-1"
-                      rel="noopener noreferrer"
-                    >
-                      <ExternalLink size={12} />
-                    </a>
-                  </div>
-                ))}
-              </motion.div>
-            )}
-          </AnimatePresence>
-        </div>
-      )}
-
-      {/* Proof Modal */}
-      <AnimatePresence>
-        {proofModal && (
-          <motion.div
-            className="fixed inset-0 bg-black/80 flex items-center justify-center z-50"
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            onClick={() => setProofModal(false)}
-          >
-            <motion.div
-              onClick={(e) => e.stopPropagation()}
-              className="bg-black/60 p-6 rounded-xl border border-white/10 max-w-md w-full text-center space-y-4"
-              initial={{ scale: 0.9 }}
-              animate={{ scale: 1 }}
-            >
-              <h3 className="text-lg text-yellow-400 font-semibold flex items-center justify-center gap-2">
-                <ShieldCheck size={18} /> Proof Verification
-              </h3>
-              <p className="text-sm text-gray-400">
-                {proofResult === "valid"
-                  ? "✅ This proof is valid for the provided address and amount."
-                  : proofResult === "invalid"
-                  ? "❌ Proof invalid — data mismatch or altered JSON."
-                  : "ℹ️ Unable to verify locally (skipped or unavailable)."}
-              </p>
-              <button
-                onClick={() => setProofModal(false)}
-                className="px-4 py-2 bg-white/10 hover:bg-white/20 rounded-lg text-sm"
-              >
-                Close
-              </button>
-            </motion.div>
-          </motion.div>
-        )}
-      </AnimatePresence>
-
-      {/* Debug Panel */}
-      {debugOpen && (
-        <motion.pre
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          className="text-xs text-gray-400 bg-black/40 p-3 rounded-xl mt-4 overflow-x-auto border border-white/5"
-        >
-          {JSON.stringify(
-            {
-              epoch: epoch?.epoch,
-              inputAddress,
-              eligible,
-              proofResult,
-              gasEstimate,
-              alreadyClaimed,
-              txHash,
-              gatewayIndex,
-            },
-            null,
-            2
-          )}
-        </motion.pre>
       )}
     </div>
   );
@@ -564,11 +466,7 @@ function CopyButton({ text }) {
       className="p-1.5 rounded bg-white/10 hover:bg-white/20 transition"
       title="Copy amount"
     >
-      {copied ? (
-        <CheckCircle size={16} className="text-green-400" />
-      ) : (
-        <Copy size={16} />
-      )}
+      {copied ? <CheckCircle size={16} className="text-green-400" /> : <Copy size={16} />}
     </button>
   );
 }

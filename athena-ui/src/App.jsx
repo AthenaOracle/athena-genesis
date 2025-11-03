@@ -1,52 +1,77 @@
-import { useState, useEffect } from "react";
-import { motion, AnimatePresence, useReducedMotion } from "framer-motion";
+import React, { useEffect, useState, Suspense } from "react";
+import { useLocation, useNavigate, Routes, Route } from "react-router-dom";
+import { Menu, X } from "lucide-react";
 import { useWallet } from "./context/WalletContext";
 import { pages } from "./config/pages";
-import { CONFIG_VERSION, UI_VERSION, MANIFESTO_IPFS } from "./config/config";
+import { MANIFESTO_IPFS } from "./config/config";
 import ManifestoModal from "./components/ManifestoModal";
 import WalletBanner from "./components/WalletBanner";
-import { Menu, X, Sparkles } from "lucide-react";
 
 export default function App() {
-  const [currentPage, setCurrentPage] = useState(0);
+  const [loading, setLoading] = useState(true);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [showManifesto, setShowManifesto] = useState(false);
-  const prefersReducedMotion = useReducedMotion();
-
+  const [nextPulseCountdown, setNextPulseCountdown] = useState("—");
+  const [oracleCount, setOracleCount] = useState(10);
   const { isConnected } = useWallet();
-  const PageComponent = pages[currentPage].component;
+  const location = useLocation();
+  const navigate = useNavigate();
 
-  // 🧠 Dynamic Title
+  // 🔹 Initial loading splash
   useEffect(() => {
-    document.title = `△ Athena — ${pages[currentPage].name}`;
-  }, [currentPage]);
+    const timer = setTimeout(() => setLoading(false), 1200);
+    return () => clearTimeout(timer);
+  }, []);
 
-  // 🔐 Wallet Navigation Guard
-  const handleNav = (index) => {
-    const page = pages[index];
-    if (page.requiresWallet && !isConnected) {
-      console.warn("Connect wallet to access this realm.");
-      return;
-    }
-    setCurrentPage(index);
-    setMobileMenuOpen(false);
-  };
+  // 🔹 Mock pulse timer
+  useEffect(() => {
+    let seconds = 83 * 60;
+    const interval = setInterval(() => {
+      seconds--;
+      if (seconds <= 0) seconds = 4 * 60 * 60;
+      const h = Math.floor(seconds / 3600);
+      const m = Math.floor((seconds % 3600) / 60);
+      setNextPulseCountdown(`${h}h ${m.toString().padStart(2, "0")}m`);
+    }, 60000);
+    return () => clearInterval(interval);
+  }, []);
 
-  // 🌀 Page Motion Variants
-  const pageVariants = {
-    enter: { opacity: 0, y: prefersReducedMotion ? 0 : 16 },
-    center: { opacity: 1, y: 0 },
-    exit: { opacity: 0, y: prefersReducedMotion ? 0 : -16 },
-  };
+  if (loading) {
+    return (
+      <div className="fixed inset-0 flex flex-col items-center justify-center bg-black text-white">
+        <svg
+          width="100"
+          height="100"
+          viewBox="0 0 100 100"
+          fill="none"
+          className="animate-spin-slow"
+        >
+          <path
+            d="M50 85 L85 15 L15 15 Z"
+            stroke="url(#glow)"
+            strokeWidth="4"
+            fill="none"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          />
+          <defs>
+            <linearGradient id="glow" x1="0%" y1="0%" x2="100%" y2="100%">
+              <stop offset="0%" stopColor="#facc15" />
+              <stop offset="100%" stopColor="#00e0ff" />
+            </linearGradient>
+          </defs>
+        </svg>
+        <p className="mt-6 text-sm tracking-[0.25em] text-amber-300/80 uppercase animate-pulse">
+          Initializing Athena Engine...
+        </p>
+      </div>
+    );
+  }
 
   return (
     <>
-      {/* 🔹 Wallet Bar */}
-      <WalletBanner />
-
-      {/* 🌌 COSMIC CANVAS */}
       <div
-        className="min-h-screen w-full text-white font-['Satoshi'] overflow-x-hidden"
+        className="min-h-screen w-full text-white font-satoshi overflow-x-hidden"
         style={{
           background: `
             radial-gradient(circle at 50% 20%, rgba(250,204,21,0.06) 0%, transparent 60%),
@@ -54,89 +79,78 @@ export default function App() {
           `,
         }}
       >
-        {/* △ HEADER / NAVBAR */}
-        <header className="sticky top-0 z-40 border-b border-white/10 backdrop-blur-xl bg-black/80 w-full">
-          <div className="max-w-7xl mx-auto px-6 sm:px-10 lg:px-16 py-4 flex items-center justify-between w-full">
-            {/* LOGO */}
-            <motion.a
-              href="/"
-              className="flex items-center gap-3 flex-shrink-0"
-              whileHover={{ scale: 1.03 }}
-              whileTap={{ scale: 0.98 }}
-              aria-label="Athena Oracle Home"
+        {/* 🔹 Header */}
+        <header className="sticky top-0 z-40 backdrop-blur-md bg-gradient-to-b from-[#070c08] via-[#0b0f0b] to-black shadow-[0_0_25px_rgba(250,204,21,0.04)]">
+          <div className="max-w-7xl mx-auto px-6 sm:px-10 lg:px-16 py-4 flex items-center justify-between">
+            {/* Logo */}
+            <div
+              onClick={() => navigate("/")}
+              aria-label="Athena Home"
+              className="flex items-center gap-3 cursor-pointer hover:scale-105 transition-transform"
             >
-              <svg width="38" height="38" viewBox="0 0 100 100" fill="none" className="drop-shadow-lg">
+              <svg
+                width="38"
+                height="38"
+                viewBox="0 0 100 100"
+                fill="none"
+                className="drop-shadow-lg"
+              >
                 <path
-                  d="M50 15 L85 85 L15 85 Z"
+                  d="M50 85 L85 15 L15 15 Z"
                   fill="none"
-                  stroke="url(#gold-gradient)"
+                  stroke="#facc15"
                   strokeWidth="4"
+                  className="filter drop-shadow-[0_0_6px_#facc15]"
                 />
-                <path
-                  d="M50 85 L70 65 L30 65 Z"
-                  fill="url(#gold-gradient)"
-                  opacity="0.3"
-                />
-                <defs>
-                  <linearGradient id="gold-gradient" x1="0%" y1="0%" x2="100%" y2="100%">
-                    <stop offset="0%" stopColor="#facc15" />
-                    <stop offset="100%" stopColor="#fbbf24" />
-                  </linearGradient>
-                </defs>
               </svg>
               <div>
-                <h1 className="text-xl font-bold tracking-tight text-white">ATHENA</h1>
+                <h1 className="text-xl font-bold tracking-tight text-white">
+                  ATHENA
+                </h1>
                 <p className="text-[10px] tracking-[0.25em] text-amber-400/70 font-medium -mt-1">
-                  ORACLE ENGINE
+                  TRUTH ENGINE
                 </p>
               </div>
-            </motion.a>
+            </div>
 
-            {/* DESKTOP NAV */}
-            <nav className="hidden md:flex items-center gap-1 flex-1 justify-center">
-              {pages.map((p, i) => (
-                <motion.button
-                  key={i}
-                  onClick={() => handleNav(i)}
-                  className={`px-5 py-2.5 rounded-full text-sm font-medium transition-all relative overflow-hidden ${
-                    currentPage === i
-                      ? "text-amber-400"
-                      : "text-gray-300 hover:text-white"
-                  }`}
-                  whileHover={{ backgroundColor: "rgba(251, 191, 36, 0.08)" }}
-                  whileTap={{ scale: 0.95 }}
-                >
-                  <span className="flex items-center gap-2">
-                    {p.icon && <p.icon size={15} />}
-                    {p.name}
-                  </span>
-                  {currentPage === i && (
-                    <motion.div
-                      layoutId="activePill"
-                      className="absolute inset-0 rounded-full bg-amber-400/10"
-                      transition={{ type: "spring", stiffness: 400, damping: 30 }}
-                    />
-                  )}
-                </motion.button>
-              ))}
-              <motion.button
-                onClick={() => setShowManifesto(true)}
-                className="ml-3 px-5 py-2.5 rounded-full bg-gradient-to-r from-amber-500 to-yellow-500 text-black text-sm font-semibold flex items-center gap-1.5 shadow-lg"
-                whileHover={{
-                  scale: 1.05,
-                  boxShadow: "0 0 20px rgba(251, 191, 36, 0.4)",
-                }}
-                whileTap={{ scale: 0.95 }}
-              >
-                <Sparkles size={15} />
-                Manifesto
-              </motion.button>
+            {/* Desktop Navigation */}
+            <nav className="hidden md:flex items-center justify-center flex-1 gap-6">
+              {pages.map(({ name, path, requiresWallet }) => {
+                const active = location.pathname === path;
+                const disabled = requiresWallet && !isConnected;
+                return (
+                  <button
+                    key={path}
+                    onClick={() => {
+                      if (!disabled) navigate(path);
+                    }}
+                    disabled={disabled}
+                    className={`text-sm font-medium tracking-wide transition ${
+                      active
+                        ? "text-amber-300"
+                        : disabled
+                        ? "text-gray-600 cursor-not-allowed"
+                        : "text-amber-400 hover:text-yellow-300"
+                    }`}
+                  >
+                    {name}
+                  </button>
+                );
+              })}
+              <span className="text-xs text-amber-300 font-semibold ml-4">
+                Next Pulse: {nextPulseCountdown} ⏳
+              </span>
             </nav>
 
-            {/* MOBILE MENU BUTTON */}
+            {/* Wallet */}
+            <div className="hidden md:flex items-center ml-6">
+              <WalletBanner minimal />
+            </div>
+
+            {/* Mobile menu toggle */}
             <button
               onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
-              className="md:hidden p-2 rounded-lg hover:bg-white/10 transition ml-auto"
+              className="md:hidden p-2 rounded-lg hover:bg-white/10 transition"
               aria-label="Toggle menu"
             >
               {mobileMenuOpen ? <X size={24} /> : <Menu size={24} />}
@@ -144,68 +158,86 @@ export default function App() {
           </div>
         </header>
 
-        {/* 📱 MOBILE NAV OVERLAY */}
-        <AnimatePresence>
-          {mobileMenuOpen && (
-            <motion.div
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              className="fixed inset-0 z-50 bg-black/95 backdrop-blur-xl md:hidden flex flex-col items-center justify-center space-y-8 px-4"
-            >
-              {pages.map((p, i) => (
-                <motion.button
-                  key={i}
-                  onClick={() => handleNav(i)}
-                  className="text-xl font-light text-gray-300 hover:text-amber-400 transition text-center w-full max-w-xs py-3"
-                  whileHover={{ x: 10 }}
-                  whileTap={{ scale: 0.95 }}
+        {/* 🔹 Mobile Menu */}
+        {mobileMenuOpen && (
+          <div className="fixed right-0 top-0 h-full w-3/4 bg-black/95 backdrop-blur-md flex flex-col items-center justify-center space-y-8 z-50">
+            {pages.map(({ name, path, requiresWallet }) => {
+              const disabled = requiresWallet && !isConnected;
+              return (
+                <button
+                  key={path}
+                  onClick={() => {
+                    if (!disabled) {
+                      navigate(path);
+                      setMobileMenuOpen(false);
+                    }
+                  }}
+                  disabled={disabled}
+                  className={`text-xl font-light ${
+                    disabled
+                      ? "text-gray-600 cursor-not-allowed"
+                      : "text-amber-400 hover:text-yellow-300"
+                  }`}
                 >
-                  {p.name}
-                </motion.button>
-              ))}
-              <motion.button
-                onClick={() => {
-                  setShowManifesto(true);
-                  setMobileMenuOpen(false);
-                }}
-                className="px-8 py-3 rounded-full bg-gradient-to-r from-amber-500 to-yellow-500 text-black font-bold text-lg w-full max-w-xs"
-                whileTap={{ scale: 0.95 }}
-              >
-                Reveal the Manifesto
-              </motion.button>
-            </motion.div>
-          )}
-        </AnimatePresence>
-
-        {/* MAIN CONTENT */}
-        <main className="max-w-6xl mx-auto px-6 sm:px-10 lg:px-16 py-20 w-full space-y-20 fade-in">
-          <AnimatePresence mode="wait">
-            <motion.div
-              key={currentPage}
-              variants={pageVariants}
-              initial="enter"
-              animate="center"
-              exit="exit"
-              transition={{ duration: prefersReducedMotion ? 0 : 0.3 }}
+                  {name}
+                </button>
+              );
+            })}
+            <button
+              onClick={() => setShowManifesto(true)}
+              className="px-8 py-3 rounded-full bg-gradient-to-r from-amber-500 to-yellow-500 text-black font-bold text-lg shadow-md"
             >
-              <PageComponent />
-            </motion.div>
-          </AnimatePresence>
+              Manifesto
+            </button>
+            <div className="pt-4">
+              <WalletBanner minimal />
+            </div>
+          </div>
+        )}
+
+        {/* 🔹 Page content */}
+        <main className="max-w-6xl mx-auto px-6 sm:px-10 lg:px-16 py-8 w-full space-y-20">
+          <Suspense fallback={<p className="text-amber-400">Loading...</p>}>
+            <Routes>
+              {pages.map(({ path, component: Component }) => (
+                <Route key={path} path={path} element={<Component />} />
+              ))}
+            </Routes>
+          </Suspense>
         </main>
 
-        {/* FOOTER */}
-        <footer className="mt-32 border-t border-white/10 pt-10 pb-10 text-center text-xs text-gray-500 w-full">
+        {/* 🔹 Footer */}
+        <footer className="bg-gradient-to-t from-[#070c08] via-[#0b0f0b] to-black backdrop-blur-md pt-6 pb-6 text-center text-xs text-gray-400 w-full shadow-[0_0_25px_rgba(250,204,21,0.04)]">
+          <div className="flex flex-col sm:flex-row items-center justify-center gap-4 mb-2">
+            {[
+              { label: "GitHub", href: "https://github.com/AthenaProtocol" },
+              { label: "X", href: "https://x.com/AthenaIsTruth" },
+              { label: "Discord", href: "https://discord.gg/5SECf3KTKH" },
+            ].map((item) => (
+              <a
+                key={item.label}
+                href={item.href}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="footer-link text-amber-400 hover:text-yellow-300 transition"
+              >
+                {item.label}
+              </a>
+            ))}
+          </div>
+
           <p>
-            Powered by <span className="text-amber-400 font-medium">△ Athena Protocol</span> • © 2025
+            Powered by{" "}
+            <span className="text-amber-400 font-medium">▽ Athena Protocol</span>{" "}
+            • © 2025
           </p>
-          <p className="mt-1">
-            Config v{CONFIG_VERSION} • UI v{UI_VERSION}
+          <p className="mt-1 text-amber-400/80">
+            Oracles: {oracleCount}/10 Active
           </p>
         </footer>
       </div>
 
-      {/* MANIFESTO MODAL */}
+      {/* 🔹 Manifesto Modal */}
       <ManifestoModal
         open={showManifesto}
         onClose={() => setShowManifesto(false)}

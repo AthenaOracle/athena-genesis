@@ -34,7 +34,7 @@ const MEDALS = [
 ];
 
 export default function Leaderboard() {
-  const { leaderboard, isLoading, refetchAll } = useAthenaData();
+  const { leaderboard, epoch, isLoading, refetchAll } = useAthenaData(); // 🆕 include epoch
   const [search, setSearch] = useState("");
   const [sortBy, setSortBy] = useState("reward");
 
@@ -61,8 +61,10 @@ export default function Leaderboard() {
         short: `${r.address.slice(0, 6)}...${r.address.slice(-4)}`,
         rewardStr: `${formatNumber(r.reward, 2)} ATA`,
         misStr: `${(r.mis * 100).toFixed(2)}%`,
+        // 🆕 attach streak count if present
+        streak: epoch?.streaks?.[r.address?.toLowerCase()] || 0,
       }));
-  }, [leaderboard, search, sortBy]);
+  }, [leaderboard, search, sortBy, epoch]);
 
   if (isLoading) return <Skeleton />;
   if (!data.length) return <EmptyState onRetry={refetchAll} />;
@@ -81,6 +83,13 @@ export default function Leaderboard() {
         <p className="text-sm text-gray-400 mt-2">
           Top 10 agents by <span className="text-yellow-400">{sortBy}</span>
         </p>
+
+        {/* 🆕 Global streak summary */}
+        {epoch?.streaks && Object.keys(epoch.streaks).length > 0 && (
+          <p className="text-xs text-yellow-500 mt-1">
+            🔁 {Object.keys(epoch.streaks).length} active Top-3 streaks this epoch
+          </p>
+        )}
       </div>
 
       {/* Controls */}
@@ -149,6 +158,12 @@ export default function Leaderboard() {
               </div>
               <div className="col-span-3 text-right">
                 <p className="text-green-400 font-mono">{row.misStr}</p>
+                {/* 🆕 per-agent streak badge */}
+                {row.streak > 0 && (
+                  <p className="text-xs text-yellow-500 mt-1">
+                    🔁 {row.streak}-epoch streak
+                  </p>
+                )}
                 {row.history?.length > 1 && (
                   <div className="h-8 mt-1">
                     <ResponsiveContainer width="100%" height="100%">

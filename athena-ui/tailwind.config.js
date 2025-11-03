@@ -15,13 +15,6 @@ export default {
           accent: "#fbbf24",
         },
       },
-      backdropBlur: {
-        DEFAULT: '8px',
-        sm: '4px',
-        md: '12px',
-        lg: '16px', // ✅ ensures backdrop-blur-lg works
-        xl: '24px',
-      },
     },
   },
   plugins: [],

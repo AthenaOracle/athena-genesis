@@ -5,19 +5,17 @@
 
 import {
   createWalletClient,
-  custom,
-  parseEther,
   createPublicClient,
   getContract,
+  parseEther,
+  custom,
 } from "viem";
 import { base } from "viem/chains";
 import RewardClaimABI from "../abi/RewardClaimABI.json";
-
-// 🪙 Contract: RewardClaim.sol
-export const CONTRACT_ADDRESS = "0x16DEEC9B1Bc2F95b75CA09BD2585aD2C66CdeCdC";
+import { CONTRACTS } from "../config/config";
 
 // ---------------------------------------------------------------------------
-// 🔹 Shared Clients
+// 🔹 Public + Wallet Clients
 // ---------------------------------------------------------------------------
 export const publicClient = createPublicClient({
   chain: base,
@@ -27,10 +25,6 @@ export const publicClient = createPublicClient({
 // ---------------------------------------------------------------------------
 // 🔸 Network Guard
 // ---------------------------------------------------------------------------
-/**
- * Ensures the connected wallet is on Base Mainnet (chainId 8453 / 0x2105).
- * Prompts the user to switch networks if needed.
- */
 export async function ensureBaseNetwork() {
   if (!window.ethereum) throw new Error("No wallet provider detected");
   const chainId = await window.ethereum.request({ method: "eth_chainId" });
@@ -43,22 +37,15 @@ export async function ensureBaseNetwork() {
 }
 
 // ---------------------------------------------------------------------------
-// 🔸 Verify Merkle Proof (local utility)
+// 🔸 Local Merkle Proof Check (optional)
 // ---------------------------------------------------------------------------
-/**
- * Verifies a Merkle proof locally for off-chain validation before claim.
- * @param {string} leaf - The computed keccak256 leaf.
- * @param {string[]} proof - Array of proof nodes.
- * @param {string} root - Merkle root for the epoch.
- * @returns {boolean}
- */
 export function verifyProofLocally(leaf, proof, root) {
   try {
     if (!leaf || !proof || !root) return false;
     let computed = leaf;
     for (const p of proof) {
       computed =
-        computed < p
+        computed.toLowerCase() < p.toLowerCase()
           ? `0x${keccak256(`${computed}${p}`).slice(2)}`
           : `0x${keccak256(`${p}${computed}`).slice(2)}`;
     }
@@ -73,16 +60,18 @@ export function verifyProofLocally(leaf, proof, root) {
 // 🔸 Estimate Claim Gas
 // ---------------------------------------------------------------------------
 /**
- * Estimates gas for a given claim transaction.
- * @param {number|string} epoch - Epoch number
- * @param {string|number} amount - ATA amount (human-readable)
- * @param {string[]} proof - Merkle proof
- * @returns {Promise<number>} Estimated gas limit
+ * Estimates gas cost for a given claim() call.
+ * @param {Object} params
+ * @param {number|string} params.epoch - Epoch number
+ * @param {string|number} params.amount - Human-readable ATA amount
+ * @param {string[]} params.proof - Merkle proof array
+ * @param {string} [params.contract] - Override contract address
  */
-export async function estimateClaimGas(epoch, amount, proof) {
+export async function estimateClaimGas({ epoch, amount, proof, contract }) {
   if (!window.ethereum) throw new Error("No wallet provider detected");
   await ensureBaseNetwork();
 
+  const address = contract || CONTRACTS.rewardClaim;
   const client = createWalletClient({
     chain: base,
     transport: custom(window.ethereum),
@@ -92,19 +81,20 @@ export async function estimateClaimGas(epoch, amount, proof) {
   const amountWei = parseEther(String(amount));
 
   try {
-    const contract = getContract({
-      address: CONTRACT_ADDRESS,
+    const c = getContract({
+      address,
       abi: RewardClaimABI,
       client,
     });
-    const gas = await contract.estimateGas.claim([epoch, amountWei, proof], {
-      account,
-    });
-    console.log(`⛽ Estimated gas: ${gas}`);
-    return Number(gas);
+
+    const gas = await c.estimateGas.claim([epoch, amountWei, proof], { account });
+    const gasEth = Number(gas) * 0.000000001; // rough gwei -> ETH conversion
+    const usd = (gasEth * 2500).toFixed(2); // approximate
+    console.log(`⛽ Estimated gas: ${gas} (${gasEth} ETH ≈ $${usd})`);
+    return { gas, eth: gasEth.toFixed(6), usd };
   } catch (err) {
     console.warn("⚠️ Gas estimation failed:", err);
-    return 0;
+    return null;
   }
 }
 
@@ -112,20 +102,22 @@ export async function estimateClaimGas(epoch, amount, proof) {
 // 🔸 Claim Reward
 // ---------------------------------------------------------------------------
 /**
- * Executes the on-chain claim() function for eligible addresses.
+ * Executes on-chain claim() for the connected user.
  * @param {Object} params
- * @param {number|string} params.epoch - Epoch number
- * @param {string|number} params.amount - ATA amount (e.g. "12.3456")
- * @param {string[]} params.proof - Merkle proof array
+ * @param {number|string} params.epoch
+ * @param {string|number} params.amount
+ * @param {string[]} params.proof
+ * @param {string} [params.contract]
  * @returns {Promise<string>} Transaction hash
  */
-export async function claimReward({ epoch, amount, proof }) {
+export async function claimReward({ epoch, amount, proof, contract }) {
   if (!epoch || !amount || !Array.isArray(proof))
-    throw new Error("Invalid or missing claim parameters");
+    throw new Error("Invalid claim parameters");
   if (!window.ethereum) throw new Error("No wallet provider found");
 
   await ensureBaseNetwork();
 
+  const address = contract || CONTRACTS.rewardClaim;
   const client = createWalletClient({
     chain: base,
     transport: custom(window.ethereum),
@@ -136,18 +128,18 @@ export async function claimReward({ epoch, amount, proof }) {
 
   try {
     console.log(
-      `🔹 Submitting claim for epoch ${epoch} from ${account} (${amount} ATA)`
+      `🔹 Claiming epoch ${epoch} (${amount} ATA) from ${account} → ${address}`
     );
 
     const hash = await client.writeContract({
-      address: CONTRACT_ADDRESS,
+      address,
       abi: RewardClaimABI,
       functionName: "claim",
       args: [epoch, amountWei, proof],
       account,
     });
 
-    console.log(`✅ Claim TX submitted: ${hash}`);
+    console.log(`✅ TX submitted: ${hash}`);
     return hash;
   } catch (err) {
     console.error("❌ Claim failed:", err);
@@ -159,27 +151,51 @@ export async function claimReward({ epoch, amount, proof }) {
 // ---------------------------------------------------------------------------
 // 🔸 Check Claimed Status
 // ---------------------------------------------------------------------------
-/**
- * Checks if a wallet has already claimed rewards for a specific epoch.
- * @param {string} wallet - Address to check
- * @param {number|string} epoch - Epoch number
- * @returns {Promise<boolean>}
- */
 export async function checkClaimed(wallet, epoch) {
   if (!wallet || epoch === undefined) throw new Error("Missing wallet or epoch");
+  const contract = getContract({
+    address: CONTRACTS.rewardClaim,
+    abi: RewardClaimABI,
+    client: publicClient,
+  });
 
   try {
-    const contract = getContract({
-      address: CONTRACT_ADDRESS,
-      abi: RewardClaimABI,
-      client: publicClient,
-    });
-
     const result = await contract.read.claimed([wallet, BigInt(epoch)]);
     console.log(`ℹ️ Claim status for ${wallet} (epoch ${epoch}):`, result);
     return Boolean(result);
   } catch (err) {
     console.error("⚠️ Failed to check claim status:", err);
     return false;
+  }
+}
+
+// ---------------------------------------------------------------------------
+// 🔸 Read Truth Bounty Info (v2 support)
+// ---------------------------------------------------------------------------
+/**
+ * Reads Truth Bounty pool parameters if supported by RewardClaim v2.
+ * @returns {Promise<Object|null>}
+ */
+export async function getTruthBountyInfo() {
+  try {
+    const contract = getContract({
+      address: CONTRACTS.rewardClaim,
+      abi: RewardClaimABI,
+      client: publicClient,
+    });
+    const [pool, eligible, avgBoost] = await Promise.all([
+      contract.read.truthBountyPool?.() ?? 0n,
+      contract.read.eligibleAgents?.() ?? 0n,
+      contract.read.avgBoostPct?.() ?? 0n,
+    ]);
+
+    return {
+      pool: Number(pool) / 1e18,
+      eligibleAgents: Number(eligible),
+      avgBoost: Number(avgBoost) / 100,
+    };
+  } catch (err) {
+    console.warn("Truth bounty info unavailable:", err.message);
+    return null;
   }
 }

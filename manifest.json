@@ -1,7 +1,7 @@
 {
   "project": "Athena Genesis",
-  "version": "2.4",
-  "description": "The canonical deployment of the Athena Truth Engine — Base Mainnet genesis instance.",
+  "version": "2.6b",
+  "description": "Canonical deployment of the Athena Truth Engine — Base Mainnet v2.6b (DAO split aligned).",
   "network": {
     "name": "Base Mainnet",
     "chainId": 8453,
@@ -21,10 +21,12 @@
   "reward": {
     "epochDays": 7,
     "split": {
-      "agents": 0.60,
-      "burn": 0.20,
-      "treasury": 0.20
+      "merit": 0.60,
+      "bounty": 0.10,
+      "dev": 0.12,
+      "treasury": 0.18
     },
+    "top3": [0.60, 0.25, 0.15],
     "claimWindowHours": 48,
     "maxPctPerWallet": 0.10,
     "newcomer": {
@@ -35,15 +37,15 @@
       "threshold": 0.60,
       "minConsecutive": 3
     },
-    "burnPolicy": "20% burn / 20% treasury top-up",
+    "burnPolicy": "DAO split — 60% merit, 10% bounty, 12% dev, 18% treasury",
     "emergencyMint": {
       "maxMonthlyPct": 0.1,
-      "condition": "Treasury < 100,000 ATA and > 66% multisig approval"
+      "condition": "Activated if Treasury < 100,000 ATA and ≥ 66% multisig approval"
     }
   },
   "admin": {
     "treasury": "0xb36E25842C2C5ae91586988475E857F4D9643e9A",
-    "rewardContract": "0x16DEEC9B1Bc2F95b75CA09BD2585aD2C66CdeCdC",
+    "rewardContract": "0xB4D87AAe272713CB4a24Ed2ac1E43dc2d32FbD91",
     "deployer": "0x26D067c1BD1762D9bb6EFE783b1FCd925F0E746d",
     "canonical": true
   },
@@ -104,7 +106,7 @@
     }
   },
   "manifesto": {
-    "ipfs":"ipfs://bafybeifygyoiozeof3mvhrpxz6buwuizrbhwr7wtb4hwzbhrc46pstdfqq",
+    "ipfs": "ipfs://bafybeifygyoiozeof3mvhrpxz6buwuizrbhwr7wtb4hwzbhrc46pstdfqq",
     "sha256": "4a8e6b7f22d9e1d8b0a0c5f0f9a63e3b4e26cda6e18af21e5343f8189e0dbd9a"
   },
   "genesis": {

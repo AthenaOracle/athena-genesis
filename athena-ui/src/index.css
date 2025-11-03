@@ -131,8 +131,8 @@
 ────────────────────────────────────────────────── */
 @layer components {
   .glass {
-    background-color: rgba(255, 255, 255, 0.05); /* ✅ replaces bg-white/5 */
-    @apply backdrop-blur-lg border border-white/20 rounded-xl shadow-xl;
+    background-color: rgba(255, 255, 255, 0.05);
+    @apply backdrop-blur border border-white/20 rounded-xl shadow-xl;
   }
 
   .glass:hover {
@@ -156,6 +156,47 @@
       opacity: 1;
       transform: translateY(0);
     }
+  }
+
+  /* ✅ Prevent hover darkening anywhere in WalletBanner */
+  .no-hover-dark *:hover {
+    background-color: transparent !important;
+    box-shadow: none !important;
+  }
+
+  /* ✅ Remove default grey system background from buttons globally */
+  button {
+    appearance: none;
+    background: transparent;
+  }
+
+  /* ✅ Unified footer gold-ring hover (Manifesto, X, Discord, GitHub) */
+  .footer-link {
+    position: relative;
+    background: transparent;
+    color: var(--accent-amber);
+    font-weight: 500;
+    padding: 0.25rem 0.75rem;
+    border-radius: 9999px;
+    transition: all 0.25s ease;
+  }
+
+  .footer-link:hover {
+    color: var(--accent-gold);
+  }
+
+  .footer-link::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    border-radius: 9999px;
+    border: 1px solid transparent;
+    transition: all 0.25s ease;
+  }
+
+  .footer-link:hover::before {
+    border-color: rgba(250, 204, 21, 0.6);
+    transform: scale(1.05);
   }
 }
 

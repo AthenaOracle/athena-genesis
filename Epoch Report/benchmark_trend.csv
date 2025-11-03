@@ -1,4 +1,0 @@
-epoch,oracle_truth,aggregate_pred,btc_error,athena_error,outperformed,collective_mis,agent_count,difficulty,bonus
-0,115214.82,115214.82,0,0,N/A,0.0,3,0.9,NO
-1,115065.98,115065.98,0.001292,0.0,YES,0.0,3,0.9,NO
-2,114997.75,114997.75,0.000593,0.0,YES,0.0,3,0.9,NO

@@ -13,7 +13,7 @@ Athena Genesis is a fully autonomous prediction-validation network that measures
 | 🧠 Core Engine | `brain.py` | Executes each epoch: collects oracle data, computes Market-Insight-Score (MIS), updates ledgers. |
 | ⚙️ Automation | `run_epoch.py` | Wraps `brain.py` for manual or CI execution; timestamps, logs, and pushes results. |
 | 📈 Analytics | `benchmark.py` | Aggregates all epoch reports → calculates TruthRate, TruthPower, error reduction. |
-| 🪙 Contracts | `AthenToken.sol` / `RewardClaim.sol` | Manages ATA rewards, burns, and treasury logic on Base Mainnet. |
+| 🪙 Contracts | `AthenaToken.sol` / `RewardClaim.sol` | Manages ATA rewards, burns, and treasury logic on Base Mainnet. |
 | 💾 Storage | `Epoch Report/` + `ledger.csv` | Houses every epoch’s truth data and cumulative ledger. |
 | 💻 Frontend | `athena-ui/` | Displays live metrics and epoch trends (React + Tailwind). |
 
